@@ -65,9 +65,15 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
 
     char *elfloader = getenv("FAKECHROOT_ELFLOADER");
     char *elfloader_opt_argv0 = getenv("FAKECHROOT_ELFLOADER_OPT_ARGV0");
+    char *elfloader_opt_audit = getenv("FAKECHROOT_ELFLOADER_OPT_AUDIT");
+    char *elfloader_opt_preload = getenv("FAKECHROOT_ELFLOADER_OPT_PRELOAD");
+    char *elfloader_opt_library_path = getenv("FAKECHROOT_ELFLOADER_OPT_LIBRARY_PATH");
 
     if (elfloader && !*elfloader) elfloader = NULL;
     if (elfloader_opt_argv0 && !*elfloader_opt_argv0) elfloader_opt_argv0 = NULL;
+    if (elfloader_opt_audit && !*elfloader_opt_audit) elfloader_opt_audit = NULL;
+    if (elfloader_opt_preload && !*elfloader_opt_preload) elfloader_opt_preload = NULL;
+    if (elfloader_opt_library_path && !*elfloader_opt_library_path) elfloader_opt_library_path = NULL;
 
     debug("posix_spawn(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
 
@@ -198,7 +204,15 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
         }
 
         /* Run via elfloader */
-        for (i = 0, n = (elfloader_opt_argv0 ? 3 : 1); argv[i] != NULL && i < argv_max; ) {
+        /* Calculate number of extra args for elfloader options */
+        int extra_args = 1; /* elfloader itself */
+        if (elfloader_opt_library_path) extra_args += 2;
+        if (elfloader_opt_audit) extra_args += 2;
+        if (elfloader_opt_preload) extra_args += 2;
+        if (elfloader_opt_argv0) extra_args += 2;
+        extra_args += 1; /* filename */
+
+        for (i = 0, n = extra_args; argv[i] != NULL && i < argv_max; ) {
             newargv[n++] = argv[i++];
         }
 
@@ -206,6 +220,18 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
 
         n = 0;
         newargv[n++] = elfloader;
+        if (elfloader_opt_library_path) {
+            newargv[n++] = "--library-path";
+            newargv[n++] = elfloader_opt_library_path;
+        }
+        if (elfloader_opt_audit) {
+            newargv[n++] = "--audit";
+            newargv[n++] = elfloader_opt_audit;
+        }
+        if (elfloader_opt_preload) {
+            newargv[n++] = "--preload";
+            newargv[n++] = elfloader_opt_preload;
+        }
         if (elfloader_opt_argv0) {
             newargv[n++] = elfloader_opt_argv0;
             newargv[n++] = argv0;
@@ -252,7 +278,15 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     }
 
     /* Run via elfloader */
-    j = elfloader_opt_argv0 ? 3 : 1;
+    /* Calculate number of extra args for elfloader options */
+    int extra_args2 = 1; /* elfloader itself */
+    if (elfloader_opt_library_path) extra_args2 += 2;
+    if (elfloader_opt_audit) extra_args2 += 2;
+    if (elfloader_opt_preload) extra_args2 += 2;
+    if (elfloader_opt_argv0) extra_args2 += 2;
+    extra_args2 += 1; /* newfilename */
+
+    j = extra_args2;
     if (n >= argv_max - 1) {
         n = argv_max - j - 1;
     }
@@ -262,6 +296,18 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     }
     n = 0;
     newargv[n++] = elfloader;
+    if (elfloader_opt_library_path) {
+        newargv[n++] = "--library-path";
+        newargv[n++] = elfloader_opt_library_path;
+    }
+    if (elfloader_opt_audit) {
+        newargv[n++] = "--audit";
+        newargv[n++] = elfloader_opt_audit;
+    }
+    if (elfloader_opt_preload) {
+        newargv[n++] = "--preload";
+        newargv[n++] = elfloader_opt_preload;
+    }
     if (elfloader_opt_argv0) {
         newargv[n++] = elfloader_opt_argv0;
         newargv[n++] = argv0;
