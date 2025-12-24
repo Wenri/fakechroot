@@ -73,7 +73,9 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
 
     debug("execve(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
 
-    strncpy(argv0, filename, FAKECHROOT_PATH_MAX - 1);
+    /* Use original argv[0] for --argv0, not filename
+     * This is important for login shells where argv[0] is "-zsh" or "-bash" */
+    strncpy(argv0, argv[0], FAKECHROOT_PATH_MAX - 1);
 
     /* Substitute command only if FAKECHROOT_CMD_ORIG is not set. Unset variable if it is empty. */
     cmdorig = getenv("FAKECHROOT_CMD_ORIG");
@@ -208,7 +210,9 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
         if (elfloader_opt_argv0) extra_args += 2; /* --argv0 <name> */
         extra_args += 1; /* filename */
 
-        for (i = 0, n = extra_args; argv[i] != NULL && i < argv_max; ) {
+        /* When using --argv0, skip original argv[0] as it's already passed via --argv0
+         * This prevents login shells from seeing "-zsh" as both argv[0] and argv[1] */
+        for (i = elfloader_opt_argv0 ? 1 : 0, n = extra_args; argv[i] != NULL && i < argv_max; ) {
             newargv[n++] = argv[i++];
         }
 
