@@ -41,7 +41,10 @@ wrapper(__readlink_chk, ssize_t, (const char * path, char * buf, size_t bufsiz, 
     debug("__readlink_chk(\"%s\", &buf, %zd, %zd)", path, bufsiz, buflen);
     expand_chroot_path(path);
 
-    if ((linksize = nextcall(__readlink_chk)(path, tmp, FAKECHROOT_PATH_MAX-1, buflen)) == -1) {
+    /* Use FAKECHROOT_PATH_MAX for the buffer length since tmp has that size.
+       Using buflen (caller's buffer size) triggers FORTIFY abort when
+       buflen < FAKECHROOT_PATH_MAX-1 because glibc thinks we're overflowing. */
+    if ((linksize = nextcall(__readlink_chk)(path, tmp, FAKECHROOT_PATH_MAX-1, FAKECHROOT_PATH_MAX)) == -1) {
         return -1;
     }
     tmp[linksize] = '\0';
