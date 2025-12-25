@@ -290,12 +290,15 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     extra_args2 += 1; /* newfilename */
 
     j = extra_args2;
-    if (n >= argv_max - 1) {
+    if (n >= argv_max - j - 1) {
         n = argv_max - j - 1;
     }
     newargv[n+j] = 0;
-    for (i = n; i >= j; i--) {
-        newargv[i] = newargv[i-j];
+    /* Shift elements from [0..n-1] to [j..j+n-1]
+     * Must iterate backwards to avoid overwriting uncopied elements
+     * Previous bug: loop condition "i >= j" failed when n < j (common case) */
+    for (i = n; i > 0; i--) {
+        newargv[i - 1 + j] = newargv[i - 1];
     }
     n = 0;
     newargv[n++] = elfloader;
