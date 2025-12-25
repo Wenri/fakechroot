@@ -278,12 +278,15 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     }
 
     /* Run via elfloader */
-    /* Calculate number of extra args for elfloader options */
+    /* Calculate number of extra args for elfloader options
+     * Note: For hashbang scripts, we don't use --argv0 because the interpreter
+     * already gets proper argv[0] from the hashbang parsing (newargv[0] = interpreter path).
+     * Using --argv0 with the original script's argv[0] would be wrong. */
     int extra_args2 = 1; /* elfloader itself */
     if (elfloader_opt_library_path) extra_args2 += 2;
     if (elfloader_opt_audit) extra_args2 += 2;
     if (elfloader_opt_preload) extra_args2 += 2;
-    if (elfloader_opt_argv0) extra_args2 += 2;
+    /* Skip --argv0 for hashbang scripts */
     extra_args2 += 1; /* newfilename */
 
     j = extra_args2;
@@ -308,10 +311,7 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
         newargv[n++] = "--preload";
         newargv[n++] = elfloader_opt_preload;
     }
-    if (elfloader_opt_argv0) {
-        newargv[n++] = elfloader_opt_argv0;
-        newargv[n++] = argv0;
-    }
+    /* --argv0 intentionally omitted for hashbang scripts */
     newargv[n] = newfilename;
     debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", elfloader, newargv[0], newargv[1], newargv[n], newenvp[0]);
     status = nextcall(execve)(elfloader, (char * const *)newargv, newenvp);
