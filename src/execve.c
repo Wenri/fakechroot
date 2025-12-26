@@ -290,15 +290,17 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     extra_args2 += 1; /* newfilename */
 
     j = extra_args2;
-    if (n >= argv_max - j - 1) {
-        n = argv_max - j - 1;
+    if (n >= argv_max - j) {
+        n = argv_max - j;
     }
-    newargv[n+j] = 0;
-    /* Shift elements from [0..n-1] to [j..j+n-1]
-     * Must iterate backwards to avoid overwriting uncopied elements
-     * Previous bug: loop condition "i >= j" failed when n < j (common case) */
-    for (i = n; i > 0; i--) {
-        newargv[i - 1 + j] = newargv[i - 1];
+    /* Shift elements from [1..n-1] to [j..j+n-2]
+     * Skip newargv[0] (interpreter from hashbang) since it's redundant with newfilename.
+     * The elfloader will load newfilename as the interpreter, so we don't want
+     * the interpreter path to appear twice in the final argv.
+     * Must iterate backwards to avoid overwriting uncopied elements. */
+    newargv[j + n - 1] = 0;  /* null terminator at new end position */
+    for (i = n - 1; i >= 1; i--) {
+        newargv[i - 1 + j] = newargv[i];
     }
     n = 0;
     newargv[n++] = elfloader;
