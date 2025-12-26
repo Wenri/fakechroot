@@ -88,28 +88,26 @@ void fakechroot_init (void) CONSTRUCTOR;
 void fakechroot_init (void)
 {
     debug("fakechroot_init()");
-    debug("FAKECHROOT_BASE=\"%s\"", android_get_base());
+    debug("FAKECHROOT_BASE=\"%s\"", android_base);
 
     if (!first) {
-        const char *exclude_path = android_get_exclude_path();
-
-        debug("android_get_exclude_path() returned \"%s\"", exclude_path ? exclude_path : "(null)");
-        debug("android_get_elfloader() returned \"%s\"", android_get_elfloader());
+        debug("android_exclude_path=\"%s\"", android_exclude_path ? android_exclude_path : "(null)");
+        debug("android_elfloader=\"%s\"", android_elfloader);
 
         first = 1;
 
         /* We get a list of directories or files */
-        if (exclude_path && exclude_path[0] != '\0') {
+        if (android_exclude_path && android_exclude_path[0] != '\0') {
             int i;
             for (i = 0; list_max < EXCLUDE_LIST_SIZE; ) {
                 int j;
-                for (j = i; exclude_path[j] != ':' && exclude_path[j] != '\0'; j++);
+                for (j = i; android_exclude_path[j] != ':' && android_exclude_path[j] != '\0'; j++);
                 exclude_list[list_max] = malloc(j - i + 2);
                 memset(exclude_list[list_max], '\0', j - i + 2);
-                strncpy(exclude_list[list_max], &(exclude_path[i]), j - i);
+                strncpy(exclude_list[list_max], &(android_exclude_path[i]), j - i);
                 exclude_length[list_max] = strlen(exclude_list[list_max]);
                 list_max++;
-                if (exclude_path[j] != ':') break;
+                if (android_exclude_path[j] != ':') break;
                 i = j + 1;
             }
         }

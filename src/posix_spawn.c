@@ -60,12 +60,6 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     size_t sizeenvp;
     char c;
 
-    /* Use compile-time constants for elfloader settings */
-    const char *elfloader = android_get_elfloader();
-    const char *elfloader_opt_argv0 = android_get_argv0_opt();
-    const char *elfloader_opt_preload = android_get_preload();
-    const char *elfloader_opt_library_path = android_get_library_path();
-
     debug("posix_spawn(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
 
     /* Use original argv[0] for --argv0, not filename
@@ -143,44 +137,29 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
 
     /* No hashbang in argv */
     if (hashbang[0] != '#' || hashbang[1] != '!') {
-        if (!elfloader) {
-            status = nextcall(posix_spawn)(pid, filename, file_actions, attrp, argv, newenvp);
-            goto error;
-        }
-
         /* Run via elfloader */
-        /* Calculate number of extra args for elfloader options */
-        int extra_args = 1; /* elfloader itself */
-        if (elfloader_opt_library_path) extra_args += 2;
-        if (elfloader_opt_preload) extra_args += 2;
-        if (elfloader_opt_argv0) extra_args += 2;
-        extra_args += 1; /* filename */
+        /* Calculate number of extra args: elfloader + --library-path <path> + --preload <lib> + --argv0 <name> + filename */
+        int extra_args = 1 + 2 + 2 + 2 + 1;
 
-        /* When using --argv0, skip original argv[0] as it's already passed via --argv0 */
-        for (i = elfloader_opt_argv0 ? 1 : 0, n = extra_args; argv[i] != NULL && i < argv_max; ) {
+        /* Skip original argv[0] as it's already passed via --argv0 */
+        for (i = 1, n = extra_args; argv[i] != NULL && i < argv_max; ) {
             newargv[n++] = argv[i++];
         }
 
         newargv[n] = 0;
 
         n = 0;
-        newargv[n++] = elfloader;
-        if (elfloader_opt_library_path) {
-            newargv[n++] = "--library-path";
-            newargv[n++] = elfloader_opt_library_path;
-        }
-        if (elfloader_opt_preload) {
-            newargv[n++] = "--preload";
-            newargv[n++] = elfloader_opt_preload;
-        }
-        if (elfloader_opt_argv0) {
-            newargv[n++] = elfloader_opt_argv0;
-            newargv[n++] = argv0;
-        }
+        newargv[n++] = android_elfloader;
+        newargv[n++] = "--library-path";
+        newargv[n++] = android_library_path;
+        newargv[n++] = "--preload";
+        newargv[n++] = android_preload;
+        newargv[n++] = ANDROID_ARGV0_OPT;
+        newargv[n++] = argv0;
         newargv[n] = filename;
 
-        debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", ...}, {\"%s\", ...})", elfloader, newargv[0], newargv[n], newenvp[0]);
-        status = nextcall(posix_spawn)(pid, elfloader, file_actions, attrp, (char * const *)newargv, newenvp);
+        debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", ...}, {\"%s\", ...})", android_elfloader, newargv[0], newargv[n], newenvp[0]);
+        status = nextcall(posix_spawn)(pid, android_elfloader, file_actions, attrp, (char * const *)newargv, newenvp);
         goto error;
     }
 
@@ -213,21 +192,10 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
 
     newargv[n] = 0;
 
-    if (!elfloader) {
-        status = nextcall(posix_spawn)(pid, newfilename, file_actions, attrp, (char * const *)newargv, newenvp);
-        goto error;
-    }
-
-    /* Run via elfloader */
-    /* Calculate number of extra args for elfloader options
-     * Note: For hashbang scripts, we don't use --argv0 because the interpreter
-     * already gets proper argv[0] from the hashbang parsing (newargv[0] = interpreter path).
-     * Using --argv0 with the original script's argv[0] would be wrong. */
-    int extra_args2 = 1; /* elfloader itself */
-    if (elfloader_opt_library_path) extra_args2 += 2;
-    if (elfloader_opt_preload) extra_args2 += 2;
-    /* Skip --argv0 for hashbang scripts */
-    extra_args2 += 1; /* newfilename */
+    /* Run via elfloader for hashbang scripts
+     * Note: We don't use --argv0 for hashbang scripts because the interpreter
+     * already gets proper argv[0] from the hashbang parsing. */
+    int extra_args2 = 1 + 2 + 2 + 1; /* elfloader + --library-path <path> + --preload <lib> + newfilename */
 
     j = extra_args2;
     if (n >= argv_max - j) {
@@ -243,19 +211,14 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
         newargv[i - 1 + j] = newargv[i];
     }
     n = 0;
-    newargv[n++] = elfloader;
-    if (elfloader_opt_library_path) {
-        newargv[n++] = "--library-path";
-        newargv[n++] = elfloader_opt_library_path;
-    }
-    if (elfloader_opt_preload) {
-        newargv[n++] = "--preload";
-        newargv[n++] = elfloader_opt_preload;
-    }
-    /* --argv0 intentionally omitted for hashbang scripts */
+    newargv[n++] = android_elfloader;
+    newargv[n++] = "--library-path";
+    newargv[n++] = android_library_path;
+    newargv[n++] = "--preload";
+    newargv[n++] = android_preload;
     newargv[n] = newfilename;
-    debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", elfloader, newargv[0], newargv[1], newargv[n], newenvp[0]);
-    status = nextcall(posix_spawn)(pid, elfloader, file_actions, attrp, (char * const *)newargv, newenvp);
+    debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", android_elfloader, newargv[0], newargv[1], newargv[n], newenvp[0]);
+    status = nextcall(posix_spawn)(pid, android_elfloader, file_actions, attrp, (char * const *)newargv, newenvp);
 
 error:
     free(newenvp);
