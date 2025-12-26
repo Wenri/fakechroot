@@ -33,6 +33,7 @@
 #include "open.h"
 #include "setenv.h"
 #include "readlink.h"
+#include "android-config.h"
 
 
 wrapper(execve, int, (const char * filename, char * const argv [], char * const envp []))
@@ -60,16 +61,13 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
 
     const char **newargv = alloca(argv_max * sizeof (const char *));
 
-    char *elfloader = getenv("FAKECHROOT_ELFLOADER");
-    char *elfloader_opt_argv0 = getenv("FAKECHROOT_ELFLOADER_OPT_ARGV0");
-    char *elfloader_opt_audit = getenv("FAKECHROOT_ELFLOADER_OPT_AUDIT");
-    char *elfloader_opt_preload = getenv("FAKECHROOT_ELFLOADER_OPT_PRELOAD");
-    char *elfloader_opt_library_path = getenv("FAKECHROOT_ELFLOADER_OPT_LIBRARY_PATH");
-    if (elfloader && !*elfloader) elfloader = NULL;
-    if (elfloader_opt_argv0 && !*elfloader_opt_argv0) elfloader_opt_argv0 = NULL;
-    if (elfloader_opt_audit && !*elfloader_opt_audit) elfloader_opt_audit = NULL;
-    if (elfloader_opt_preload && !*elfloader_opt_preload) elfloader_opt_preload = NULL;
-    if (elfloader_opt_library_path && !*elfloader_opt_library_path) elfloader_opt_library_path = NULL;
+    /* Use Android config helpers for elfloader settings.
+     * These use compile-time constants when available, falling back to env vars. */
+    const char *elfloader = android_get_elfloader();
+    const char *elfloader_opt_argv0 = android_get_argv0_opt();
+    const char *elfloader_opt_preload = android_get_preload();
+    const char *elfloader_opt_library_path = android_get_library_path();
+    /* Note: LD_AUDIT support dropped - path translation is now in ld.so */
 
     debug("execve(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
 
@@ -205,7 +203,6 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
         /* Calculate number of extra args for elfloader options */
         int extra_args = 1; /* elfloader itself */
         if (elfloader_opt_library_path) extra_args += 2; /* --library-path <path> */
-        if (elfloader_opt_audit) extra_args += 2; /* --audit <lib> */
         if (elfloader_opt_preload) extra_args += 2; /* --preload <lib> */
         if (elfloader_opt_argv0) extra_args += 2; /* --argv0 <name> */
         extra_args += 1; /* filename */
@@ -223,10 +220,6 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
         if (elfloader_opt_library_path) {
             newargv[n++] = "--library-path";
             newargv[n++] = elfloader_opt_library_path;
-        }
-        if (elfloader_opt_audit) {
-            newargv[n++] = "--audit";
-            newargv[n++] = elfloader_opt_audit;
         }
         if (elfloader_opt_preload) {
             newargv[n++] = "--preload";
@@ -284,7 +277,6 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
      * Using --argv0 with the original script's argv[0] would be wrong. */
     int extra_args2 = 1; /* elfloader itself */
     if (elfloader_opt_library_path) extra_args2 += 2;
-    if (elfloader_opt_audit) extra_args2 += 2;
     if (elfloader_opt_preload) extra_args2 += 2;
     /* Skip --argv0 for hashbang scripts */
     extra_args2 += 1; /* newfilename */
@@ -307,10 +299,6 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     if (elfloader_opt_library_path) {
         newargv[n++] = "--library-path";
         newargv[n++] = elfloader_opt_library_path;
-    }
-    if (elfloader_opt_audit) {
-        newargv[n++] = "--audit";
-        newargv[n++] = elfloader_opt_audit;
     }
     if (elfloader_opt_preload) {
         newargv[n++] = "--preload";
