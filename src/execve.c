@@ -134,9 +134,13 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
 
     /* No hashbang in argv */
     if (hashbang[0] != '#' || hashbang[1] != '!') {
-        /* Run via elfloader */
-        /* Calculate number of extra args: elfloader + --library-path <path> + --preload <lib> + --argv0 <name> + filename */
-        int extra_args = 1 + 2 + 2 + 2 + 1;
+        /* Run via elfloader.
+         * ld.so handles:
+         *   - preloading libfakechroot via /etc/ld.so.preload
+         *   - glibc path redirection (standard glibc -> android glibc)
+         *   - /nix/store path translation
+         * We only need to pass --argv0 for login shell detection. */
+        int extra_args = 1 + 2 + 1;  /* elfloader + --argv0 <name> + filename */
 
         /* Skip original argv[0] as it's already passed via --argv0
          * This prevents login shells from seeing "-zsh" as both argv[0] and argv[1] */
@@ -148,10 +152,6 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
 
         n = 0;
         newargv[n++] = ANDROID_ELFLOADER;
-        newargv[n++] = "--library-path";
-        newargv[n++] = ANDROID_LIBRARY_PATH;
-        newargv[n++] = "--preload";
-        newargv[n++] = ANDROID_PRELOAD;
         newargv[n++] = ANDROID_ARGV0_OPT;
         newargv[n++] = argv0;
         newargv[n] = filename;
@@ -190,10 +190,11 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
 
     newargv[n] = 0;
 
-    /* Run via elfloader for hashbang scripts
-     * Note: We don't use --argv0 for hashbang scripts because the interpreter
+    /* Run via elfloader for hashbang scripts.
+     * ld.so handles preloading and glibc redirection automatically.
+     * We don't use --argv0 for hashbang scripts because the interpreter
      * already gets proper argv[0] from the hashbang parsing. */
-    int extra_args2 = 1 + 2 + 2 + 1; /* elfloader + --library-path <path> + --preload <lib> + newfilename */
+    int extra_args2 = 1 + 1; /* elfloader + newfilename */
 
     j = extra_args2;
     if (n >= argv_max - j) {
@@ -210,10 +211,6 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     }
     n = 0;
     newargv[n++] = ANDROID_ELFLOADER;
-    newargv[n++] = "--library-path";
-    newargv[n++] = ANDROID_LIBRARY_PATH;
-    newargv[n++] = "--preload";
-    newargv[n++] = ANDROID_PRELOAD;
     newargv[n] = newfilename;
     debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[1], newargv[n], newenvp[0]);
     status = nextcall(execve)(ANDROID_ELFLOADER, (char * const *)newargv, newenvp);
