@@ -28,6 +28,7 @@
 
 #include "rel2abs.h"
 #include "rel2absat.h"
+#include "android-config.h"
 
 
 #define debug fakechroot_debug
@@ -84,7 +85,7 @@
 #define narrow_chroot_path(path) \
     { \
         if ((path) != NULL && *((char *)(path)) != '\0') { \
-            const char *fakechroot_base = getenv("FAKECHROOT_BASE"); \
+            const char *fakechroot_base = android_get_base(); \
             if (fakechroot_base != NULL) { \
                 char *fakechroot_ptr = strstr((path), fakechroot_base); \
                 if (fakechroot_ptr == (path)) { \
@@ -106,7 +107,7 @@
     { \
         if (!fakechroot_localdir(path)) { \
             if ((path) != NULL && *((char *)(path)) == '/') { \
-                const char *fakechroot_base = getenv("FAKECHROOT_BASE"); \
+                const char *fakechroot_base = android_get_base(); \
                 if (fakechroot_base != NULL ) { \
                     snprintf(fakechroot_buf, FAKECHROOT_PATH_MAX, "%s%s", fakechroot_base, (path)); \
                     (path) = fakechroot_buf; \

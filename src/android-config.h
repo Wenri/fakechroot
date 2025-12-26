@@ -37,6 +37,24 @@
 #endif
 
 /*
+ * FAKECHROOT_ANDROID_BASE: Base path for fakechroot path translation
+ * This is the nix-on-droid installation directory.
+ * Defined at compile time via -DFAKECHROOT_ANDROID_BASE="..."
+ */
+#ifndef FAKECHROOT_ANDROID_BASE
+#define FAKECHROOT_ANDROID_BASE NULL
+#endif
+
+/*
+ * FAKECHROOT_ANDROID_EXCLUDE_PATH: Paths to exclude from translation
+ * Colon-separated list of paths that should NOT be translated.
+ * Defined at compile time via -DFAKECHROOT_ANDROID_EXCLUDE_PATH="..."
+ */
+#ifndef FAKECHROOT_ANDROID_EXCLUDE_PATH
+#define FAKECHROOT_ANDROID_EXCLUDE_PATH NULL
+#endif
+
+/*
  * Helper macro to get config value: use compile-time constant if defined,
  * otherwise fall back to environment variable for backward compatibility.
  */
@@ -61,6 +79,14 @@ static inline const char* android_get_library_path(void) {
 
 static inline const char* android_get_preload(void) {
     return ANDROID_CONFIG_GET(FAKECHROOT_ANDROID_PRELOAD, "FAKECHROOT_ELFLOADER_OPT_PRELOAD");
+}
+
+static inline const char* android_get_base(void) {
+    return ANDROID_CONFIG_GET(FAKECHROOT_ANDROID_BASE, "FAKECHROOT_BASE");
+}
+
+static inline const char* android_get_exclude_path(void) {
+    return ANDROID_CONFIG_GET(FAKECHROOT_ANDROID_EXCLUDE_PATH, "FAKECHROOT_EXCLUDE_PATH");
 }
 
 /*

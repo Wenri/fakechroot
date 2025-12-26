@@ -115,7 +115,11 @@ void fakechroot_init (void)
     debug("FAKECHROOT_CMD_ORIG=\"%s\"", getenv("FAKECHROOT_CMD_ORIG"));
 
     if (!first) {
-        char *exclude_path = getenv("FAKECHROOT_EXCLUDE_PATH");
+        const char *exclude_path = android_get_exclude_path();
+        const char *base_path = android_get_base();
+
+        debug("android_get_exclude_path() returned \"%s\"", exclude_path ? exclude_path : "(null)");
+        debug("android_get_base() returned \"%s\"", base_path ? base_path : "(null)");
 
         first = 1;
 
