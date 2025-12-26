@@ -147,17 +147,17 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
         newargv[n] = 0;
 
         n = 0;
-        newargv[n++] = android_elfloader;
+        newargv[n++] = ANDROID_ELFLOADER;
         newargv[n++] = "--library-path";
-        newargv[n++] = android_library_path;
+        newargv[n++] = ANDROID_LIBRARY_PATH;
         newargv[n++] = "--preload";
-        newargv[n++] = android_preload;
+        newargv[n++] = ANDROID_PRELOAD;
         newargv[n++] = ANDROID_ARGV0_OPT;
         newargv[n++] = argv0;
         newargv[n] = filename;
 
-        debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", ...}, {\"%s\", ...})", android_elfloader, newargv[0], newargv[n], newenvp[0]);
-        status = nextcall(execve)(android_elfloader, (char * const *)newargv, newenvp);
+        debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[n], newenvp[0]);
+        status = nextcall(execve)(ANDROID_ELFLOADER, (char * const *)newargv, newenvp);
         goto error;
     }
 
@@ -209,14 +209,14 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
         newargv[i - 1 + j] = newargv[i];
     }
     n = 0;
-    newargv[n++] = android_elfloader;
+    newargv[n++] = ANDROID_ELFLOADER;
     newargv[n++] = "--library-path";
-    newargv[n++] = android_library_path;
+    newargv[n++] = ANDROID_LIBRARY_PATH;
     newargv[n++] = "--preload";
-    newargv[n++] = android_preload;
+    newargv[n++] = ANDROID_PRELOAD;
     newargv[n] = newfilename;
-    debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", android_elfloader, newargv[0], newargv[1], newargv[n], newenvp[0]);
-    status = nextcall(execve)(android_elfloader, (char * const *)newargv, newenvp);
+    debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[1], newargv[n], newenvp[0]);
+    status = nextcall(execve)(ANDROID_ELFLOADER, (char * const *)newargv, newenvp);
 
 error:
     free(newenvp);

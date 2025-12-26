@@ -28,7 +28,6 @@ libfakechroot_la_SOURCES = \
     _xftw64.c \
     access.c \
     acct.c \
-    android-config.c \
     audit_log_acct_message.c \
     bind.c \
     bindtextdomain.c \

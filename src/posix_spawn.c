@@ -149,17 +149,17 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
         newargv[n] = 0;
 
         n = 0;
-        newargv[n++] = android_elfloader;
+        newargv[n++] = ANDROID_ELFLOADER;
         newargv[n++] = "--library-path";
-        newargv[n++] = android_library_path;
+        newargv[n++] = ANDROID_LIBRARY_PATH;
         newargv[n++] = "--preload";
-        newargv[n++] = android_preload;
+        newargv[n++] = ANDROID_PRELOAD;
         newargv[n++] = ANDROID_ARGV0_OPT;
         newargv[n++] = argv0;
         newargv[n] = filename;
 
-        debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", ...}, {\"%s\", ...})", android_elfloader, newargv[0], newargv[n], newenvp[0]);
-        status = nextcall(posix_spawn)(pid, android_elfloader, file_actions, attrp, (char * const *)newargv, newenvp);
+        debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[n], newenvp[0]);
+        status = nextcall(posix_spawn)(pid, ANDROID_ELFLOADER, file_actions, attrp, (char * const *)newargv, newenvp);
         goto error;
     }
 
@@ -211,14 +211,14 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
         newargv[i - 1 + j] = newargv[i];
     }
     n = 0;
-    newargv[n++] = android_elfloader;
+    newargv[n++] = ANDROID_ELFLOADER;
     newargv[n++] = "--library-path";
-    newargv[n++] = android_library_path;
+    newargv[n++] = ANDROID_LIBRARY_PATH;
     newargv[n++] = "--preload";
-    newargv[n++] = android_preload;
+    newargv[n++] = ANDROID_PRELOAD;
     newargv[n] = newfilename;
-    debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", android_elfloader, newargv[0], newargv[1], newargv[n], newenvp[0]);
-    status = nextcall(posix_spawn)(pid, android_elfloader, file_actions, attrp, (char * const *)newargv, newenvp);
+    debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[1], newargv[n], newenvp[0]);
+    status = nextcall(posix_spawn)(pid, ANDROID_ELFLOADER, file_actions, attrp, (char * const *)newargv, newenvp);
 
 error:
     free(newenvp);

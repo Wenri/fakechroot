@@ -85,10 +85,10 @@
 #define narrow_chroot_path(path) \
     { \
         if ((path) != NULL && *((char *)(path)) != '\0') { \
-            if (android_base != NULL) { \
-                char *fakechroot_ptr = strstr((path), android_base); \
+            if (ANDROID_BASE != NULL) { \
+                char *fakechroot_ptr = strstr((path), ANDROID_BASE); \
                 if (fakechroot_ptr == (path)) { \
-                    const size_t fakechroot_base_len = strlen(android_base); \
+                    const size_t fakechroot_base_len = strlen(ANDROID_BASE); \
                     const size_t path_len = strlen(path); \
                     if (path_len == fakechroot_base_len) { \
                         ((char *)(path))[0] = '/'; \
@@ -106,8 +106,8 @@
     { \
         if (!fakechroot_localdir(path)) { \
             if ((path) != NULL && *((char *)(path)) == '/') { \
-                if (android_base != NULL ) { \
-                    snprintf(fakechroot_buf, FAKECHROOT_PATH_MAX, "%s%s", android_base, (path)); \
+                if (ANDROID_BASE != NULL ) { \
+                    snprintf(fakechroot_buf, FAKECHROOT_PATH_MAX, "%s%s", ANDROID_BASE, (path)); \
                     (path) = fakechroot_buf; \
                 } \
             } \
