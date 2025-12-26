@@ -51,17 +51,7 @@ static int first = 0;
 
 /* List of environment variables to preserve on clearenv() */
 char *preserve_env_list[] = {
-    "FAKECHROOT_BASE",
-    "FAKECHROOT_CMD_SUBST",
     "FAKECHROOT_DEBUG",
-    "FAKECHROOT_DETECT",
-    "FAKECHROOT_ELFLOADER",
-    "FAKECHROOT_ELFLOADER_OPT_ARGV0",
-    "FAKECHROOT_ELFLOADER_OPT_PRELOAD",
-    "FAKECHROOT_ELFLOADER_OPT_LIBRARY_PATH",
-    "FAKECHROOT_EXCLUDE_PATH",
-    "FAKECHROOT_LDLIBPATH",
-    "FAKECHROOT_VERSION",
     "FAKEROOTKEY",
     "FAKED_MODE",
     "LD_LIBRARY_PATH",
@@ -97,34 +87,19 @@ LOCAL int fakechroot_debug (const char *fmt, ...)
 void fakechroot_init (void) CONSTRUCTOR;
 void fakechroot_init (void)
 {
-    char *detect = getenv("FAKECHROOT_DETECT");
-
-
-    if (detect) {
-        /* printf causes coredump on FreeBSD */
-        if (write(STDOUT_FILENO, PACKAGE, sizeof(PACKAGE)-1) &&
-            write(STDOUT_FILENO, " ", 1) &&
-            write(STDOUT_FILENO, VERSION, sizeof(VERSION)-1) &&
-            write(STDOUT_FILENO, "\n", 1)) { /* -Wunused-result */ }
-        _Exit(atoi(detect));
-    }
-
     debug("fakechroot_init()");
-    debug("FAKECHROOT_BASE=\"%s\"", getenv("FAKECHROOT_BASE"));
-    debug("FAKECHROOT_BASE_ORIG=\"%s\"", getenv("FAKECHROOT_BASE_ORIG"));
-    debug("FAKECHROOT_CMD_ORIG=\"%s\"", getenv("FAKECHROOT_CMD_ORIG"));
+    debug("FAKECHROOT_BASE=\"%s\"", android_get_base());
 
     if (!first) {
         const char *exclude_path = android_get_exclude_path();
-        const char *base_path = android_get_base();
 
         debug("android_get_exclude_path() returned \"%s\"", exclude_path ? exclude_path : "(null)");
-        debug("android_get_base() returned \"%s\"", base_path ? base_path : "(null)");
+        debug("android_get_elfloader() returned \"%s\"", android_get_elfloader());
 
         first = 1;
 
         /* We get a list of directories or files */
-        if (exclude_path) {
+        if (exclude_path && exclude_path[0] != '\0') {
             int i;
             for (i = 0; list_max < EXCLUDE_LIST_SIZE; ) {
                 int j;
@@ -138,9 +113,6 @@ void fakechroot_init (void)
                 i = j + 1;
             }
         }
-
-        __setenv("FAKECHROOT", "true", 1);
-        __setenv("FAKECHROOT_VERSION", FAKECHROOT, 1);
     }
 }
 

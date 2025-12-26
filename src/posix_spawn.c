@@ -47,43 +47,30 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
 
     int status;
     int file;
-    int is_base_orig = 0;
     char hashbang[FAKECHROOT_PATH_MAX];
     size_t argv_max = 1024;
     const char **newargv = alloca(argv_max * sizeof (const char *));
     char **newenvp, **ep;
     char *key, *env;
     char tmpkey[1024], *tp;
-    char *cmdorig;
     char tmp[FAKECHROOT_PATH_MAX];
-    char substfilename[FAKECHROOT_PATH_MAX];
     char newfilename[FAKECHROOT_PATH_MAX];
     char argv0[FAKECHROOT_PATH_MAX];
     unsigned int i, j, n, newenvppos;
-    unsigned int do_cmd_subst = 0;
     size_t sizeenvp;
     char c;
 
-    /* Use Android config helpers for elfloader settings.
-     * These use compile-time constants when available, falling back to env vars. */
+    /* Use compile-time constants for elfloader settings */
     const char *elfloader = android_get_elfloader();
     const char *elfloader_opt_argv0 = android_get_argv0_opt();
     const char *elfloader_opt_preload = android_get_preload();
     const char *elfloader_opt_library_path = android_get_library_path();
-    /* Note: LD_AUDIT support dropped - path translation is now in ld.so */
 
     debug("posix_spawn(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
 
     /* Use original argv[0] for --argv0, not filename
      * This is important for login shells where argv[0] is "-zsh" or "-bash" */
     strncpy(argv0, argv[0], FAKECHROOT_PATH_MAX - 1);
-
-    /* Substitute command only if FAKECHROOT_CMD_ORIG is not set. Unset variable if it is empty. */
-    cmdorig = getenv("FAKECHROOT_CMD_ORIG");
-    if (cmdorig == NULL)
-        do_cmd_subst = fakechroot_try_cmd_subst(getenv("FAKECHROOT_CMD_SUBST"), argv0, substfilename);
-    else if (!*cmdorig)
-        unsetenv("FAKECHROOT_CMD_ORIG");
 
     /* Scan envp and check its size */
     sizeenvp = 0;
@@ -101,20 +88,11 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     }
     newenvppos = 0;
 
-    /* Create new envp */
-    newenvp[newenvppos] = malloc(strlen("FAKECHROOT=true") + 1);
-    strcpy(newenvp[newenvppos], "FAKECHROOT=true");
-    newenvppos++;
-
-    /* Preserve old environment variables if not overwritten by new */
+    /* Preserve environment variables from preserve_env_list if not in envp */
     for (j = 0; j < preserve_env_list_count; j++) {
         key = preserve_env_list[j];
         env = getenv(key);
         if (env != NULL && *env) {
-            if (do_cmd_subst && strcmp(key, "FAKECHROOT_BASE") == 0) {
-                key = "FAKECHROOT_BASE_ORIG";
-                is_base_orig = 1;
-            }
             if (envp) {
                 for (ep = (char **) envp; *ep != NULL; ++ep) {
                     strncpy(tmpkey, *ep, 1024);
@@ -139,44 +117,12 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     /* Append old envp to new envp */
     if (envp) {
         for (ep = (char **) envp; *ep != NULL; ++ep) {
-            strncpy(tmpkey, *ep, 1024);
-            tmpkey[1023] = 0;
-            if ((tp = strchr(tmpkey, '=')) != NULL) {
-                *tp = 0;
-                if (strcmp(tmpkey, "FAKECHROOT") == 0 ||
-                    (is_base_orig && strcmp(tmpkey, "FAKECHROOT_BASE") == 0))
-                {
-                    goto skip2;
-                }
-            }
             newenvp[newenvppos] = *ep;
             newenvppos++;
-        skip2: ;
         }
     }
 
     newenvp[newenvppos] = NULL;
-
-    if (newenvp == NULL) {
-        __set_errno(ENOMEM);
-        return errno;
-    }
-
-    if (do_cmd_subst) {
-        newenvp[newenvppos] = malloc(strlen("FAKECHROOT_CMD_ORIG=") + strlen(filename) + 1);
-        strcpy(newenvp[newenvppos], "FAKECHROOT_CMD_ORIG=");
-        strcat(newenvp[newenvppos], filename);
-        newenvppos++;
-    }
-
-    newenvp[newenvppos] = NULL;
-
-    /* Exec substituted command */
-    if (do_cmd_subst) {
-        debug("nextcall(posix_spawn)(\"%s\", {\"%s\", ...}, {\"%s\", ...})", substfilename, argv[0], newenvp[0]);
-        status = nextcall(posix_spawn)(pid, substfilename, file_actions, attrp, (char * const *)argv, newenvp);
-        goto error;
-    }
 
     /* Check hashbang */
     expand_chroot_path(filename);
