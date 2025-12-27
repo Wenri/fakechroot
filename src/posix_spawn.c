@@ -184,7 +184,10 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
             break;
     }
 
-    newargv[n++] = argv0;
+    /* Add the script path for the interpreter to execute.
+     * This is critical - the interpreter needs to know what script to run.
+     * Using 'filename' (expanded path) instead of 'argv0' (just the name). */
+    newargv[n++] = filename;
 
     for (i = 1; argv[i] != NULL && i < argv_max; ) {
         newargv[n++] = argv[i++];
@@ -194,9 +197,15 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
 
     /* Run via elfloader for hashbang scripts.
      * ld.so handles preloading and glibc redirection automatically.
-     * We don't use --argv0 for hashbang scripts because the interpreter
-     * already gets proper argv[0] from the hashbang parsing. */
-    int extra_args2 = 1 + 1; /* elfloader + newfilename */
+     *
+     * Final argv should be: [ld.so, interpreter, interp_args..., script_path, user_args...]
+     * We need to:
+     * 1. Prepend elfloader
+     * 2. Keep interpreter from newfilename (not hashbang[0] which is unexpanded)
+     * 3. Keep interpreter args (from hashbang parsing)
+     * 4. Keep script path and user args
+     */
+    int extra_args2 = 1 + 1; /* elfloader + newfilename (interpreter) */
 
     j = extra_args2;
     if (n >= argv_max - j) {
@@ -204,8 +213,7 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     }
     /* Shift elements from [1..n-1] to [j..j+n-2]
      * Skip newargv[0] (interpreter from hashbang) since it's redundant with newfilename.
-     * The elfloader will load newfilename as the interpreter, so we don't want
-     * the interpreter path to appear twice in the final argv.
+     * The elfloader will load newfilename as the interpreter.
      * Must iterate backwards to avoid overwriting uncopied elements. */
     newargv[j + n - 1] = 0;  /* null terminator at new end position */
     for (i = n - 1; i >= 1; i--) {
@@ -214,7 +222,7 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     n = 0;
     newargv[n++] = ANDROID_ELFLOADER;
     newargv[n] = newfilename;
-    debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[1], newargv[n], newenvp[0]);
+    debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[1], newargv[2], newenvp[0]);
     status = nextcall(posix_spawn)(pid, ANDROID_ELFLOADER, file_actions, attrp, (char * const *)newargv, newenvp);
 
 error:
