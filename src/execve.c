@@ -134,13 +134,18 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
 
     /* No hashbang in argv */
     if (hashbang[0] != '#' || hashbang[1] != '!') {
-        /* Run via elfloader.
+        /* Run via elfloader for ELF binaries.
          * ld.so handles:
          *   - preloading libfakechroot via /etc/ld.so.preload
          *   - glibc path redirection (standard glibc -> android glibc)
          *   - /nix/store path translation
-         * We only need to pass --argv0 for login shell detection. */
-        int extra_args = 1 + 2 + 1;  /* elfloader + --argv0 <name> + filename */
+         *
+         * argv layout: [argv0, --argv0, argv0, filename, user_args...]
+         * - First argv0 is ld.so's argv[0] (shows in ps/top as command name)
+         * - --argv0 + argv0 sets the program's argv[0] (for login shell detection)
+         * - filename is the actual program to execute
+         */
+        int extra_args = 1 + 2 + 1;  /* argv0 + --argv0 + argv0 + filename */
 
         /* Skip original argv[0] as it's already passed via --argv0
          * This prevents login shells from seeing "-zsh" as both argv[0] and argv[1] */
@@ -151,12 +156,12 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
         newargv[n] = 0;
 
         n = 0;
-        newargv[n++] = ANDROID_ELFLOADER;
+        newargv[n++] = argv0;             /* ld.so's argv[0]: original command name for ps */
         newargv[n++] = ANDROID_ARGV0_OPT;
         newargv[n++] = argv0;
         newargv[n] = filename;
 
-        debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[n], newenvp[0]);
+        debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[1], newargv[2], newargv[3], newenvp[0]);
         status = nextcall(execve)(ANDROID_ELFLOADER, (char * const *)newargv, newenvp);
         goto error;
     }
@@ -196,14 +201,19 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     /* Run via elfloader for hashbang scripts.
      * ld.so handles preloading and glibc redirection automatically.
      *
-     * Final argv should be: [ld.so, interpreter, interp_args..., script_path, user_args...]
-     * We need to:
-     * 1. Prepend elfloader
-     * 2. Keep interpreter from newfilename (not hashbang[0] which is unexpanded)
-     * 3. Keep interpreter args (from hashbang parsing)
-     * 4. Keep script path and user args
+     * Final argv should be:
+     *   [argv0, --argv0, argv0, interpreter, interp_args..., script_path, user_args...]
+     *
+     * Where:
+     * - First argv0 is ld.so's argv[0] (shows in ps/top as the command name)
+     * - --argv0 + argv0 tells ld.so to set interpreter's argv[0] to the original
+     *   command name, so scripts see correct $0
+     * - interpreter is the hashbang interpreter (e.g., bash)
+     * - interp_args are hashbang arguments (e.g., -e)
+     * - script_path is the script to execute
+     * - user_args are the original arguments after argv[0]
      */
-    int extra_args2 = 1 + 1; /* elfloader + newfilename (interpreter) */
+    int extra_args2 = 1 + 2 + 1; /* argv0 + --argv0 + argv0 + newfilename (interpreter) */
 
     j = extra_args2;
     if (n >= argv_max - j) {
@@ -218,9 +228,11 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
         newargv[i - 1 + j] = newargv[i];
     }
     n = 0;
-    newargv[n++] = ANDROID_ELFLOADER;
-    newargv[n] = newfilename;
-    debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[1], newargv[2], newenvp[0]);
+    newargv[n++] = argv0;             /* ld.so's argv[0]: original command name for ps */
+    newargv[n++] = ANDROID_ARGV0_OPT; /* --argv0 */
+    newargv[n++] = argv0;             /* interpreter's argv[0]: original command name for $0 */
+    newargv[n] = newfilename;         /* interpreter path */
+    debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[1], newargv[2], newargv[3], newenvp[0]);
     status = nextcall(execve)(ANDROID_ELFLOADER, (char * const *)newargv, newenvp);
 
 error:
