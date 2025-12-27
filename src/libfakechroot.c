@@ -40,9 +40,11 @@
 #include "strchrnul.h"
 
 #define EXCLUDE_LIST_SIZE 100
-
+#define EXCLUDE_PATH_MAX 256
 
 /* Useful to exclude a list of directories or files */
+/* Use static buffers to avoid malloc in constructor (causes corruption on Android) */
+static char exclude_list_storage[EXCLUDE_LIST_SIZE][EXCLUDE_PATH_MAX];
 static char *exclude_list[EXCLUDE_LIST_SIZE];
 static int exclude_length[EXCLUDE_LIST_SIZE];
 static int list_max = 0;
@@ -64,14 +66,17 @@ LOCAL int fakechroot_debug (const char *fmt, ...)
 {
     int ret;
     char newfmt[2048];
-
     va_list ap;
-    va_start(ap, fmt);
 
+    /* Check FAKECHROOT_DEBUG BEFORE va_start to avoid undefined behavior.
+     * Calling va_start without va_end is undefined behavior that can
+     * corrupt the stack/heap on some architectures. */
     if (!getenv("FAKECHROOT_DEBUG"))
         return 0;
 
-    sprintf(newfmt, PACKAGE ": %s\n", fmt);
+    va_start(ap, fmt);
+
+    snprintf(newfmt, sizeof(newfmt), PACKAGE ": %s\n", fmt);
 
     ret = vfprintf(stderr, newfmt, ap);
     va_end(ap);
@@ -97,14 +102,17 @@ void fakechroot_init (void)
         first = 1;
 
         /* We get a list of directories or files */
+        /* Use static storage to avoid malloc in constructor (causes corruption on Android) */
         if (ANDROID_EXCLUDE_PATH && ANDROID_EXCLUDE_PATH[0] != '\0') {
             int i;
             for (i = 0; list_max < EXCLUDE_LIST_SIZE; ) {
-                int j;
+                int j, len;
                 for (j = i; ANDROID_EXCLUDE_PATH[j] != ':' && ANDROID_EXCLUDE_PATH[j] != '\0'; j++);
-                exclude_list[list_max] = malloc(j - i + 2);
-                memset(exclude_list[list_max], '\0', j - i + 2);
-                strncpy(exclude_list[list_max], &(ANDROID_EXCLUDE_PATH[i]), j - i);
+                len = j - i;
+                if (len >= EXCLUDE_PATH_MAX) len = EXCLUDE_PATH_MAX - 1;
+                exclude_list[list_max] = exclude_list_storage[list_max];
+                memset(exclude_list[list_max], '\0', EXCLUDE_PATH_MAX);
+                strncpy(exclude_list[list_max], &(ANDROID_EXCLUDE_PATH[i]), len);
                 exclude_length[list_max] = strlen(exclude_list[list_max]);
                 list_max++;
                 if (ANDROID_EXCLUDE_PATH[j] != ':') break;
