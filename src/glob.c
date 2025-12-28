@@ -22,12 +22,16 @@
 
 #include <glob.h>
 #include "libfakechroot.h"
+#include "android-config.h"
 
 
 wrapper(glob, int, (const char * pattern, int flags, int (* errfunc) (const char *, int), glob_t * pglob))
 {
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     int rc, i;
+
+    /* Use compile-time ANDROID_BASE */
+    const char *fakechroot_base = ANDROID_BASE;
 
     debug("glob(\"%s\", %d, &errfunc, &pglob)", pattern, flags);
     expand_chroot_rel_path(pattern);
@@ -37,7 +41,6 @@ wrapper(glob, int, (const char * pattern, int flags, int (* errfunc) (const char
         return rc;
 
     for (i = 0; i < pglob->gl_pathc; i++) {
-        const char *fakechroot_base = getenv("FAKECHROOT_BASE");
         char tmp[FAKECHROOT_PATH_MAX], *tmpptr;
 
         strcpy(tmp, pglob->gl_pathv[i]);

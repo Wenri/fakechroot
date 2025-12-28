@@ -31,6 +31,7 @@
 
 #include "strlcpy.h"
 #include "dedotdot.h"
+#include "android-config.h"
 
 #ifdef HAVE___XSTAT64
 # include "__xstat64.h"
@@ -56,7 +57,8 @@ wrapper(chroot, int, (const char * path))
     char tmp[FAKECHROOT_PATH_MAX], *tmpptr = tmp;
     struct STAT_T sb;
 
-    const char *fakechroot_base = getenv("FAKECHROOT_BASE");
+    /* Use compile-time ANDROID_BASE */
+    const char *fakechroot_base = ANDROID_BASE;
 
     debug("chroot(\"%s\")", path);
 

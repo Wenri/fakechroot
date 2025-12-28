@@ -23,6 +23,7 @@
 #include <string.h>
 #include "libfakechroot.h"
 #include "getcwd_real.h"
+#include "android-config.h"
 
 
 wrapper(chdir, int, (const char * path))
@@ -32,15 +33,16 @@ wrapper(chdir, int, (const char * path))
 
     char cwd[FAKECHROOT_PATH_MAX];
 
-    const char *fakechroot_base = getenv("FAKECHROOT_BASE");
-
     debug("chdir(\"%s\")", path);
 
     if (getcwd_real(cwd, FAKECHROOT_PATH_MAX) == NULL) {
         return -1;
     }
-    if (fakechroot_base != NULL) {
-        if (strstr(cwd, fakechroot_base) == cwd) {
+
+    /* Use compile-time ANDROID_BASE instead of getenv("FAKECHROOT_BASE")
+     * since we compile the base path into the library */
+    if (ANDROID_BASE != NULL) {
+        if (strstr(cwd, ANDROID_BASE) == cwd) {
             expand_chroot_path(path);
         }
         else {

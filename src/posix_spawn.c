@@ -123,6 +123,27 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     strcpy(tmp, filename);
     filename = tmp;
 
+    /* If executing any dynamic linker (ld.so), don't wrap it - ld.so cannot load itself.
+     * This happens when programs like the login script or nix daemon invoke ld.so directly.
+     *
+     * We detect ld.so by checking if the basename starts with "ld-" and ends with ".so" variants.
+     * Note: We must NOT replace the path with ANDROID_ELFLOADER - different programs may use
+     * different versions of glibc, and we need to respect their choice. */
+    {
+        const char *filename_basename = strrchr(filename, '/');
+        if (filename_basename) {
+            filename_basename++;  /* Skip the '/' */
+            /* Check for common dynamic linker names: ld-linux-*.so.*, ld.so.*, etc. */
+            if (strncmp(filename_basename, "ld-", 3) == 0 ||
+                strncmp(filename_basename, "ld.so", 5) == 0) {
+                debug("posix_spawn: executing dynamic linker directly, no wrapping: %s", filename);
+                status = nextcall(posix_spawn)(pid, filename, file_actions, attrp, argv, newenvp);
+                free(newenvp);
+                return status;
+            }
+        }
+    }
+
     if ((file = nextcall(open)(filename, O_RDONLY)) == -1) {
         __set_errno(ENOENT);
         return errno;

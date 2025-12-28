@@ -23,6 +23,7 @@
 #include <sys/types.h>
 #include <stddef.h>
 #include "libfakechroot.h"
+#include "android-config.h"
 
 
 wrapper(readlink, READLINK_TYPE_RETURN, (const char * path, char * buf, READLINK_TYPE_ARG3(bufsiz)))
@@ -33,7 +34,8 @@ wrapper(readlink, READLINK_TYPE_RETURN, (const char * path, char * buf, READLINK
     int linksize;
     char tmp[FAKECHROOT_PATH_MAX], *tmpptr;
 
-    const char *fakechroot_base = getenv("FAKECHROOT_BASE");
+    /* Use compile-time ANDROID_BASE */
+    const char *fakechroot_base = ANDROID_BASE;
 
     debug("readlink(\"%s\", &buf, %zd)", path, bufsiz);
     if (!strcmp(path, "/etc/malloc.conf")) {

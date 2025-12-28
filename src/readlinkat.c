@@ -26,15 +26,18 @@
 #include <sys/types.h>
 #include <stddef.h>
 #include "libfakechroot.h"
+#include "android-config.h"
 
 
 wrapper(readlinkat, ssize_t, (int dirfd, const char * path, char * buf, size_t bufsiz))
 {
     int linksize;
     char tmp[FAKECHROOT_PATH_MAX], *tmpptr;
-    const char *fakechroot_base = getenv("FAKECHROOT_BASE");
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
+
+    /* Use compile-time ANDROID_BASE */
+    const char *fakechroot_base = ANDROID_BASE;
 
     debug("readlinkat(%d, \"%s\", &buf, %zd)", dirfd, path, bufsiz);
     expand_chroot_path_at(dirfd, path);
