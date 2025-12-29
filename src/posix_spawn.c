@@ -56,6 +56,7 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     char tmp[FAKECHROOT_PATH_MAX];
     char newfilename[FAKECHROOT_PATH_MAX];
     char argv0[FAKECHROOT_PATH_MAX];
+    char shebang_argv0[FAKECHROOT_PATH_MAX];  /* Original shebang interpreter for argv[0] */
     unsigned int i, j, n, newenvppos;
     size_t sizeenvp;
     char c;
@@ -197,6 +198,10 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
             hashbang[i] = 0;
             if (i > j) {
                 if (n == 0) {
+                    /* Save original shebang interpreter path for argv[0] (before expansion)
+                     * This follows kernel behavior: interpreter's argv[0] = shebang path as-is */
+                    strncpy(shebang_argv0, &hashbang[j], FAKECHROOT_PATH_MAX - 1);
+                    shebang_argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
                     const char *ptr = &hashbang[j];
                     expand_chroot_path(ptr);
                     strcpy(newfilename, ptr);
@@ -224,18 +229,18 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
      * ld.so handles preloading and glibc redirection automatically.
      *
      * Final argv should be:
-     *   [argv0, --argv0, argv0, interpreter, interp_args..., script_path, user_args...]
+     *   [shebang_interp, --argv0, shebang_interp, interpreter, interp_args..., script_path, user_args...]
      *
      * Where:
-     * - First argv0 is ld.so's argv[0] (shows in ps/top as the command name)
-     * - --argv0 + argv0 tells ld.so to set interpreter's argv[0] to the original
-     *   command name, so scripts see correct $0
-     * - interpreter is the hashbang interpreter (e.g., bash)
+     * - First shebang_interp is ld.so's argv[0] (shows in ps/top)
+     * - --argv0 + shebang_interp tells ld.so to set interpreter's argv[0] to the
+     *   shebang interpreter path (as-is), following kernel behavior for $^X etc.
+     * - interpreter is the resolved hashbang interpreter path
      * - interp_args are hashbang arguments (e.g., -e)
-     * - script_path is the script to execute
+     * - script_path is the script to execute (interpreter uses this for $0)
      * - user_args are the original arguments after argv[0]
      */
-    int extra_args2 = 1 + 2 + 1; /* argv0 + --argv0 + argv0 + newfilename (interpreter) */
+    int extra_args2 = 1 + 2 + 1; /* shebang_argv0 + --argv0 + shebang_argv0 + newfilename (interpreter) */
 
     j = extra_args2;
     if (n >= argv_max - j) {
@@ -250,10 +255,10 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
         newargv[i - 1 + j] = newargv[i];
     }
     n = 0;
-    newargv[n++] = argv0;             /* ld.so's argv[0]: original command name for ps */
+    newargv[n++] = shebang_argv0;     /* ld.so's argv[0]: shebang interpreter path for ps */
     newargv[n++] = ANDROID_ARGV0_OPT; /* --argv0 */
-    newargv[n++] = argv0;             /* interpreter's argv[0]: original command name for $0 */
-    newargv[n] = newfilename;         /* interpreter path */
+    newargv[n++] = shebang_argv0;     /* interpreter's argv[0]: shebang path (kernel behavior for $^X) */
+    newargv[n] = newfilename;         /* interpreter path (resolved) */
     debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[1], newargv[2], newargv[3], newenvp[0]);
     status = nextcall(posix_spawn)(pid, ANDROID_ELFLOADER, file_actions, attrp, (char * const *)newargv, newenvp);
 
