@@ -33,6 +33,12 @@
 #include <stdio.h>
 #include <pwd.h>
 #include <dlfcn.h>
+#include <signal.h>
+#include <errno.h>
+
+#ifdef __linux__
+#include <sys/ucontext.h>
+#endif
 
 #include "setenv.h"
 #include "libfakechroot.h"
@@ -88,6 +94,56 @@ LOCAL int fakechroot_debug (const char *fmt, ...)
 #include "getcwd.h"
 
 
+/*
+ * SIGSYS handler for Android seccomp bypass.
+ * When Android's seccomp blocks syscalls like faccessat2, it sends SIGSYS.
+ * We intercept this and return ENOSYS so Go (and other runtimes) can fallback.
+ */
+#ifdef __linux__
+#ifndef SYS_faccessat2
+#define SYS_faccessat2 439
+#endif
+#ifndef SYS_SECCOMP
+#define SYS_SECCOMP 1
+#endif
+
+static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
+{
+    (void)sig;
+
+    if (info->si_code != SYS_SECCOMP)
+        return;
+
+    /* Handle blocked syscalls by returning ENOSYS */
+    if (info->si_syscall == SYS_faccessat2) {
+        ucontext_t *ctx = (ucontext_t *)ucontext;
+#ifdef __aarch64__
+        /* On aarch64, x0 holds the return value */
+        ctx->uc_mcontext.regs[0] = -ENOSYS;
+#endif
+#ifdef __x86_64__
+        /* On x86_64, rax holds the return value */
+        ctx->uc_mcontext.gregs[REG_RAX] = -ENOSYS;
+#endif
+        debug("sigsys: blocked faccessat2, returning ENOSYS");
+    }
+}
+
+static void fakechroot_install_sigsys_handler(void)
+{
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = fakechroot_sigsys_handler;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+
+    if (sigaction(SIGSYS, &sa, NULL) == 0) {
+        debug("sigsys: handler installed for seccomp bypass");
+    }
+}
+#endif /* __linux__ */
+
+
 /* Bootstrap the library */
 void fakechroot_init (void) CONSTRUCTOR;
 void fakechroot_init (void)
@@ -100,6 +156,11 @@ void fakechroot_init (void)
         debug("ANDROID_ELFLOADER=\"%s\"", ANDROID_ELFLOADER);
 
         first = 1;
+
+#ifdef __linux__
+        /* Install SIGSYS handler for Android seccomp bypass */
+        fakechroot_install_sigsys_handler();
+#endif
 
         /* We get a list of directories or files */
         /* Use static storage to avoid malloc in constructor (causes corruption on Android) */
