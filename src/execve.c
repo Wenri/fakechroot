@@ -58,15 +58,14 @@ static int is_dynamic_linker(const char *filename)
  * If newenvp/envbuf are NULL, just calculate required buffer size.
  * If newenvp/envbuf are non-NULL, copy strings and populate newenvp.
  *
+ * @param envp       Original environment (to check for duplicates)
  * @param newenvp    Environment array to populate (NULL for size calc only)
  * @param envbuf     Buffer for env strings (NULL for size calc only)
  * @param envpos_ptr Pointer to envpos counter (updated if non-NULL)
- * @param envp       Original environment (to check for duplicates)
  * @return Buffer size needed/used (minimum 1 for empty VLA)
  */
-static size_t process_preserve_env(char **newenvp, char *envbuf,
-                                   unsigned int *envpos_ptr,
-                                   char * const envp[])
+size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf,
+                         unsigned int *envpos_ptr)
 {
     size_t total = 0;
     char *bufptr = envbuf;
@@ -116,15 +115,6 @@ static size_t process_preserve_env(char **newenvp, char *envbuf,
 
 
 /*
- * Calculate size needed for preserved environment variable strings.
- */
-size_t exec_envbuf_size(char * const envp[])
-{
-    return process_preserve_env(NULL, NULL, NULL, envp);
-}
-
-
-/*
  * Prepare execution context: initialize, copy environment, expand filename.
  */
 int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
@@ -152,7 +142,7 @@ int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
 
     /* Prepare environment: preserve required vars + copy original envp */
     envpos = 0;
-    process_preserve_env(ctx->newenvp, envbuf, &envpos, envp);
+    exec_preserve_env(envp, ctx->newenvp, envbuf, &envpos);
 
     /* Append original envp */
     if (envp) {
@@ -340,7 +330,7 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     /* VLAs for exact-size allocation */
     const char *newargv[argc + EXEC_EXTRA_ARGV + 1];
     char *newenvp[envc + preserve_env_list_count + 1];
-    size_t envbuf_size = exec_envbuf_size(envp);
+    size_t envbuf_size = exec_preserve_env(envp, NULL, NULL, NULL);
     char envbuf[envbuf_size];
 
     if (exec_prepare(&ctx, newargv, newenvp, envbuf, filename, argv, envp) != 0) {
