@@ -250,8 +250,8 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
     strncpy(ctx->argv0, ptr, FAKECHROOT_PATH_MAX - 1);
     ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
 
-    /* Clean up shebangArg: skip whitespace */
-    while (**shebangArg == ' ' || **shebangArg == '\t') (*shebangArg)++;
+    /* Skip leading whitespace in shebangArg */
+    *shebangArg += strspn(*shebangArg, " \t");
 
     /* If empty, set to NULL */
     if (!**shebangArg) {
