@@ -25,19 +25,58 @@
 #include <signal.h>
 #include <string.h>
 #include <errno.h>
+#include <sys/ucontext.h>
 #include "libfakechroot.h"
+
+#ifndef SYS_faccessat2
+#define SYS_faccessat2 439
+#endif
+#ifndef SYS_SECCOMP
+#define SYS_SECCOMP 1
+#endif
 
 /* Saved SIGSYS handler from other code (e.g., Go runtime) */
 static struct sigaction saved_sigsys_handler;
 static int have_saved_sigsys_handler = 0;
 
-/* Our SIGSYS handler - declared in libfakechroot.c */
-extern void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext);
-
-/* Get the saved handler for chaining */
-struct sigaction *fakechroot_get_saved_sigsys_handler(void)
+/*
+ * SIGSYS handler for Android seccomp bypass.
+ * When Android's seccomp blocks syscalls like faccessat2, it sends SIGSYS.
+ * We intercept this and return ENOSYS so Go (and other runtimes) can fallback.
+ */
+static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
 {
-    return have_saved_sigsys_handler ? &saved_sigsys_handler : NULL;
+    /* Handle seccomp-blocked faccessat2 by returning ENOSYS */
+    if (info->si_code == SYS_SECCOMP && info->si_syscall == SYS_faccessat2) {
+        ucontext_t *ctx = (ucontext_t *)ucontext;
+#ifdef __aarch64__
+        /* On aarch64, x0 holds the return value */
+        ctx->uc_mcontext.regs[0] = -ENOSYS;
+#endif
+#ifdef __x86_64__
+        /* On x86_64, rax holds the return value */
+        ctx->uc_mcontext.gregs[REG_RAX] = -ENOSYS;
+#endif
+        debug("sigsys: blocked faccessat2, returning ENOSYS");
+        return;
+    }
+
+    /* Chain to saved handler (e.g., Go's handler) for other SIGSYS signals */
+    if (have_saved_sigsys_handler) {
+        if (saved_sigsys_handler.sa_flags & SA_SIGINFO) {
+            if (saved_sigsys_handler.sa_sigaction != NULL) {
+                debug("sigsys: chaining to saved SA_SIGINFO handler");
+                saved_sigsys_handler.sa_sigaction(sig, info, ucontext);
+            }
+        } else {
+            if (saved_sigsys_handler.sa_handler != NULL &&
+                saved_sigsys_handler.sa_handler != SIG_IGN &&
+                saved_sigsys_handler.sa_handler != SIG_DFL) {
+                debug("sigsys: chaining to saved handler");
+                saved_sigsys_handler.sa_handler(sig);
+            }
+        }
+    }
 }
 
 wrapper(sigaction, int, (int signum, const struct sigaction *act, struct sigaction *oldact))
@@ -70,6 +109,24 @@ wrapper(sigaction, int, (int signum, const struct sigaction *act, struct sigacti
     /* Don't actually install their handler - keep ours installed */
     /* Return success to make them think it worked */
     return 0;
+}
+
+/*
+ * Install our SIGSYS handler using nextcall to bypass our own wrapper.
+ * Called from fakechroot_init() in libfakechroot.c.
+ */
+void fakechroot_install_sigsys_handler(void)
+{
+    struct sigaction sa;
+
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = fakechroot_sigsys_handler;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+
+    if (nextcall(sigaction)(SIGSYS, &sa, NULL) == 0) {
+        debug("sigsys: handler installed for seccomp bypass");
+    }
 }
 
 #endif /* __linux__ */
