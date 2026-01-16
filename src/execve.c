@@ -28,53 +28,55 @@
 #endif
 #include <stdlib.h>
 #include <fcntl.h>
+#include <string.h>
 #include "strchrnul.h"
 #include "libfakechroot.h"
 #include "open.h"
 #include "setenv.h"
 #include "readlink.h"
 #include "android-config.h"
+#include "execve.h"
 
 
-wrapper(execve, int, (const char * filename, char * const argv [], char * const envp []))
+/*
+ * Initialize execution context.
+ */
+void exec_ctx_init(exec_ctx_t *ctx, char * const argv[], size_t argv_max)
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
-    char fakechroot_buf[FAKECHROOT_PATH_MAX];
+    memset(ctx, 0, sizeof(*ctx));
+    ctx->argv_max = argv_max;
+    ctx->newargv = alloca(argv_max * sizeof(const char *));
 
-    int status;
-    int file;
-    char hashbang[FAKECHROOT_PATH_MAX];
-    size_t argv_max = 1024;
-    char **newenvp, **ep;
+    /* Preserve original argv[0] for --argv0 option.
+     * This is important for login shells where argv[0] is "-zsh" or "-bash" */
+    if (argv && argv[0]) {
+        strncpy(ctx->argv0, argv[0], FAKECHROOT_PATH_MAX - 1);
+        ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
+    }
+}
+
+
+/*
+ * Prepare environment by copying envp and preserving required variables.
+ */
+int exec_prepare_env(exec_ctx_t *ctx, char * const envp[])
+{
+    char **ep;
     char *key, *env;
     char tmpkey[1024], *tp;
-    char tmp[FAKECHROOT_PATH_MAX];
-    char newfilename[FAKECHROOT_PATH_MAX];
-    char argv0[FAKECHROOT_PATH_MAX];
-    char shebang_argv0[FAKECHROOT_PATH_MAX];  /* Original shebang interpreter for argv[0] */
-    unsigned int i, j, n, newenvppos;
-    size_t sizeenvp;
-    char c;
-
-    const char **newargv = alloca(argv_max * sizeof (const char *));
-
-    debug("execve(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
-
-    /* Use original argv[0] for --argv0, not filename
-     * This is important for login shells where argv[0] is "-zsh" or "-bash" */
-    strncpy(argv0, argv[0], FAKECHROOT_PATH_MAX - 1);
+    size_t sizeenvp = 0;
+    unsigned int j, newenvppos;
 
     /* Scan envp and check its size */
-    sizeenvp = 0;
     if (envp) {
         for (ep = (char **)envp; *ep != NULL; ++ep) {
             sizeenvp++;
         }
     }
 
-    /* Copy envp to newenvp */
-    newenvp = malloc( (sizeenvp + preserve_env_list_count + 1) * sizeof (char *) );
-    if (newenvp == NULL) {
+    /* Allocate new environment */
+    ctx->newenvp = malloc((sizeenvp + preserve_env_list_count + 1) * sizeof(char *));
+    if (ctx->newenvp == NULL) {
         __set_errno(ENOMEM);
         return -1;
     }
@@ -86,184 +88,303 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
         env = getenv(key);
         if (env != NULL && *env) {
             if (envp) {
-                for (ep = (char **) envp; *ep != NULL; ++ep) {
+                for (ep = (char **)envp; *ep != NULL; ++ep) {
                     strncpy(tmpkey, *ep, 1024);
                     tmpkey[1023] = 0;
                     if ((tp = strchr(tmpkey, '=')) != NULL) {
                         *tp = 0;
                         if (strcmp(tmpkey, key) == 0) {
-                            goto skip1;
+                            goto skip_preserve;
                         }
                     }
                 }
             }
-            newenvp[newenvppos] = malloc(strlen(key) + strlen(env) + 3);
-            strcpy(newenvp[newenvppos], key);
-            strcat(newenvp[newenvppos], "=");
-            strcat(newenvp[newenvppos], env);
-            newenvppos++;
-        skip1: ;
-        }
-    }
-
-    /* Append old envp to new envp */
-    if (envp) {
-        for (ep = (char **) envp; *ep != NULL; ++ep) {
-            newenvp[newenvppos] = *ep;
-            newenvppos++;
-        }
-    }
-
-    newenvp[newenvppos] = NULL;
-
-    /* Check hashbang */
-    expand_chroot_path(filename);
-    strcpy(tmp, filename);
-    filename = tmp;
-
-    /* If executing any dynamic linker (ld.so), don't wrap it - ld.so cannot load itself.
-     * This happens when programs like the login script or nix daemon invoke ld.so directly.
-     *
-     * We detect ld.so by checking if the basename starts with "ld-" and ends with ".so" variants.
-     * Note: We must NOT replace the path with ANDROID_ELFLOADER - different programs may use
-     * different versions of glibc, and we need to respect their choice. */
-    {
-        const char *filename_basename = strrchr(filename, '/');
-        if (filename_basename) {
-            filename_basename++;  /* Skip the '/' */
-            /* Check for common dynamic linker names: ld-linux-*.so.*, ld.so.*, etc. */
-            if (strncmp(filename_basename, "ld-", 3) == 0 ||
-                strncmp(filename_basename, "ld.so", 5) == 0) {
-                debug("execve: executing dynamic linker directly, no wrapping: %s", filename);
-                status = nextcall(execve)(filename, argv, newenvp);
-                free(newenvp);
-                return status;
+            ctx->newenvp[newenvppos] = malloc(strlen(key) + strlen(env) + 3);
+            if (ctx->newenvp[newenvppos]) {
+                strcpy(ctx->newenvp[newenvppos], key);
+                strcat(ctx->newenvp[newenvppos], "=");
+                strcat(ctx->newenvp[newenvppos], env);
+                newenvppos++;
             }
+        skip_preserve:;
         }
     }
 
-    if ((file = nextcall(open)(filename, O_RDONLY)) == -1) {
+    /* Append original envp to new envp */
+    if (envp) {
+        for (ep = (char **)envp; *ep != NULL; ++ep) {
+            ctx->newenvp[newenvppos++] = *ep;
+        }
+    }
+
+    ctx->newenvp[newenvppos] = NULL;
+    return 0;
+}
+
+
+/*
+ * Check if filename is a dynamic linker (ld.so).
+ */
+static int is_dynamic_linker(const char *filename)
+{
+    const char *basename = strrchr(filename, '/');
+    if (basename) {
+        basename++;  /* Skip the '/' */
+        /* Check for common dynamic linker names: ld-linux-*.so.*, ld.so.*, etc. */
+        if (strncmp(basename, "ld-", 3) == 0 ||
+            strncmp(basename, "ld.so", 5) == 0) {
+            return 1;
+        }
+    }
+    return 0;
+}
+
+
+/*
+ * Expand filename path and check if it's a dynamic linker.
+ *
+ * Note: This function uses ctx->fakechroot_abspath and ctx->fakechroot_buf
+ * which are required by the expand_chroot_path macro.
+ */
+void exec_expand_filename(exec_ctx_t *ctx, const char *filename)
+{
+    /* These local refs are needed for expand_chroot_path macro */
+    char *fakechroot_abspath = ctx->fakechroot_abspath;
+    char *fakechroot_buf = ctx->fakechroot_buf;
+
+    expand_chroot_path(filename);
+    strncpy(ctx->tmp, filename, FAKECHROOT_PATH_MAX - 1);
+    ctx->tmp[FAKECHROOT_PATH_MAX - 1] = '\0';
+
+    /* Check if executing dynamic linker directly */
+    ctx->is_ld_so = is_dynamic_linker(ctx->tmp);
+    if (ctx->is_ld_so) {
+        debug("exec: executing dynamic linker directly, no wrapping: %s", ctx->tmp);
+    }
+}
+
+
+/*
+ * Read file header to detect hashbang scripts vs ELF binaries.
+ */
+int exec_read_header(exec_ctx_t *ctx)
+{
+    int file;
+    int i;
+
+    file = nextcall(open)(ctx->tmp, O_RDONLY);
+    if (file == -1) {
         __set_errno(ENOENT);
         return -1;
     }
 
-    i = read(file, hashbang, FAKECHROOT_PATH_MAX-2);
+    i = read(file, ctx->hashbang, FAKECHROOT_PATH_MAX - 2);
     close(file);
+
     if (i == -1) {
         __set_errno(ENOENT);
         return -1;
     }
 
-    /* No hashbang in argv */
-    if (hashbang[0] != '#' || hashbang[1] != '!') {
-        /* Run via elfloader for ELF binaries.
-         * ld.so handles:
-         *   - preloading libfakechroot via /etc/ld.so.preload
-         *   - glibc path redirection (standard glibc -> android glibc)
-         *   - /nix/store path translation
-         *
-         * argv layout: [argv0, --argv0, argv0, filename, user_args...]
-         * - First argv0 is ld.so's argv[0] (shows in ps/top as command name)
-         * - --argv0 + argv0 sets the program's argv[0] (for login shell detection)
-         * - filename is the actual program to execute
-         */
-        int extra_args = 1 + 2 + 1;  /* argv0 + --argv0 + argv0 + filename */
+    ctx->hashbang_len = i;
+    ctx->hashbang[i] = ctx->hashbang[i + 1] = '\0';
 
-        /* Skip original argv[0] as it's already passed via --argv0
-         * This prevents login shells from seeing "-zsh" as both argv[0] and argv[1] */
-        for (i = 1, n = extra_args; argv[i] != NULL && i < argv_max; ) {
-            newargv[n++] = argv[i++];
-        }
+    /* Check for hashbang */
+    ctx->is_script = (ctx->hashbang[0] == '#' && ctx->hashbang[1] == '!');
 
-        newargv[n] = 0;
+    return 0;
+}
 
-        n = 0;
-        newargv[n++] = argv0;             /* ld.so's argv[0]: original command name for ps */
-        newargv[n++] = ANDROID_ARGV0_OPT;
-        newargv[n++] = argv0;
-        newargv[n] = filename;
 
-        debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[1], newargv[2], newargv[3], newenvp[0]);
-        status = nextcall(execve)(ANDROID_ELFLOADER, (char * const *)newargv, newenvp);
-        goto error;
+/*
+ * Build argument vector for ELF binary execution via elfloader.
+ *
+ * argv layout: [argv0, --argv0, argv0, filename, user_args...]
+ * - First argv0 is ld.so's argv[0] (shows in ps/top as command name)
+ * - --argv0 + argv0 sets the program's argv[0] (for login shell detection)
+ * - filename is the actual program to execute
+ */
+void exec_build_elf_argv(exec_ctx_t *ctx, char * const argv[])
+{
+    unsigned int i, n;
+    int extra_args = 1 + 2 + 1;  /* argv0 + --argv0 <name> + filename */
+
+    /* Copy user arguments (skip original argv[0], it's passed via --argv0) */
+    for (i = 1, n = extra_args; argv[i] != NULL && i < ctx->argv_max; ) {
+        ctx->newargv[n++] = argv[i++];
     }
+    ctx->newargv[n] = NULL;
 
-    /* For hashbang we must fix argv[0] */
-    hashbang[i] = hashbang[i+1] = 0;
-    for (i = j = 2; (hashbang[i] == ' ' || hashbang[i] == '\t') && i < FAKECHROOT_PATH_MAX; i++, j++);
+    /* Set up elfloader arguments */
+    n = 0;
+    ctx->newargv[n++] = ctx->argv0;           /* ld.so's argv[0]: command name for ps */
+    ctx->newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
+    ctx->newargv[n++] = ctx->argv0;           /* program's argv[0] */
+    ctx->newargv[n] = ctx->tmp;               /* program path */
+}
+
+
+/*
+ * Parse hashbang line and build argument vector for script execution.
+ *
+ * Final argv layout:
+ *   [shebang_interp, --argv0, shebang_interp, interpreter, interp_args..., script_path, user_args...]
+ */
+void exec_build_script_argv(exec_ctx_t *ctx, char * const argv[])
+{
+    /* These local refs are needed for expand_chroot_path macro */
+    char *fakechroot_abspath = ctx->fakechroot_abspath;
+    char *fakechroot_buf = ctx->fakechroot_buf;
+
+    unsigned int i, j, n;
+    char c;
+    int extra_args;
+
+    /* Parse hashbang: skip "#!" and leading whitespace */
+    for (i = j = 2; (ctx->hashbang[i] == ' ' || ctx->hashbang[i] == '\t') && i < FAKECHROOT_PATH_MAX; i++, j++)
+        ;
+
+    /* Parse interpreter and arguments from hashbang line */
     for (n = 0; i < FAKECHROOT_PATH_MAX; i++) {
-        c = hashbang[i];
-        if (hashbang[i] == 0 || hashbang[i] == ' ' || hashbang[i] == '\t' || hashbang[i] == '\n') {
-            hashbang[i] = 0;
+        c = ctx->hashbang[i];
+        if (c == '\0' || c == ' ' || c == '\t' || c == '\n') {
+            ctx->hashbang[i] = '\0';
             if (i > j) {
                 if (n == 0) {
-                    /* Save original shebang interpreter path for argv[0] (before expansion)
-                     * This follows kernel behavior: interpreter's argv[0] = shebang path as-is */
-                    strncpy(shebang_argv0, &hashbang[j], FAKECHROOT_PATH_MAX - 1);
-                    shebang_argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
-                    debug("execve: shebang_argv0=\"%s\" (original shebang interpreter)", shebang_argv0);
-                    const char *ptr = &hashbang[j];
+                    /* First token is the interpreter.
+                     * Save original shebang path for argv[0] (kernel behavior for $^X) */
+                    strncpy(ctx->shebang_argv0, &ctx->hashbang[j], FAKECHROOT_PATH_MAX - 1);
+                    ctx->shebang_argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
+                    debug("exec: shebang_argv0=\"%s\"", ctx->shebang_argv0);
+
+                    /* Expand interpreter path */
+                    const char *ptr = &ctx->hashbang[j];
                     expand_chroot_path(ptr);
-                    strcpy(newfilename, ptr);
+                    strncpy(ctx->newfilename, ptr, FAKECHROOT_PATH_MAX - 1);
+                    ctx->newfilename[FAKECHROOT_PATH_MAX - 1] = '\0';
                 }
-                newargv[n++] = &hashbang[j];
+                ctx->newargv[n++] = &ctx->hashbang[j];
             }
             j = i + 1;
         }
-        if (c == '\n' || c == 0)
+        if (c == '\n' || c == '\0')
             break;
     }
 
-    /* Add the script path for the interpreter to execute.
-     * This is critical - the interpreter needs to know what script to run.
-     * Using 'filename' (expanded path) instead of 'argv0' (just the name). */
-    newargv[n++] = filename;
+    /* Add the script path for the interpreter */
+    ctx->newargv[n++] = ctx->tmp;
 
-    for (i = 1; argv[i] != NULL && i < argv_max; ) {
-        newargv[n++] = argv[i++];
+    /* Add user arguments (skip argv[0]) */
+    for (i = 1; argv[i] != NULL && i < ctx->argv_max; ) {
+        ctx->newargv[n++] = argv[i++];
+    }
+    ctx->newargv[n] = NULL;
+
+    /* Now shift everything to make room for elfloader args at the front.
+     * Skip newargv[0] (interpreter from hashbang) since it's redundant with newfilename. */
+    extra_args = 1 + 2 + 1;  /* shebang_argv0 + --argv0 + shebang_argv0 + newfilename */
+    j = extra_args;
+
+    if (n >= ctx->argv_max - j) {
+        n = ctx->argv_max - j;
     }
 
-    newargv[n] = 0;
-
-    /* Run via elfloader for hashbang scripts.
-     * ld.so handles preloading and glibc redirection automatically.
-     *
-     * Final argv should be:
-     *   [shebang_interp, --argv0, shebang_interp, interpreter, interp_args..., script_path, user_args...]
-     *
-     * Where:
-     * - First shebang_interp is ld.so's argv[0] (shows in ps/top)
-     * - --argv0 + shebang_interp tells ld.so to set interpreter's argv[0] to the
-     *   shebang interpreter path (as-is), following kernel behavior for $^X etc.
-     * - interpreter is the resolved hashbang interpreter path
-     * - interp_args are hashbang arguments (e.g., -e)
-     * - script_path is the script to execute (interpreter uses this for $0)
-     * - user_args are the original arguments after argv[0]
-     */
-    int extra_args2 = 1 + 2 + 1; /* shebang_argv0 + --argv0 + shebang_argv0 + newfilename (interpreter) */
-
-    j = extra_args2;
-    if (n >= argv_max - j) {
-        n = argv_max - j;
-    }
-    /* Shift elements from [1..n-1] to [j..j+n-2]
-     * Skip newargv[0] (interpreter from hashbang) since it's redundant with newfilename.
-     * The elfloader will load newfilename as the interpreter.
-     * Must iterate backwards to avoid overwriting uncopied elements. */
-    newargv[j + n - 1] = 0;  /* null terminator at new end position */
+    /* Shift elements from [1..n-1] to [j..j+n-2], iterate backwards */
+    ctx->newargv[j + n - 1] = NULL;
     for (i = n - 1; i >= 1; i--) {
-        newargv[i - 1 + j] = newargv[i];
+        ctx->newargv[i - 1 + j] = ctx->newargv[i];
     }
+
+    /* Set up elfloader arguments */
     n = 0;
-    newargv[n++] = shebang_argv0;     /* ld.so's argv[0]: shebang interpreter path for ps */
-    newargv[n++] = ANDROID_ARGV0_OPT; /* --argv0 */
-    newargv[n++] = shebang_argv0;     /* interpreter's argv[0]: shebang path (kernel behavior for $^X) */
-    newargv[n] = newfilename;         /* interpreter path (resolved) */
-    debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, {\"%s\", ...})", ANDROID_ELFLOADER, newargv[0], newargv[1], newargv[2], newargv[3], newenvp[0]);
-    status = nextcall(execve)(ANDROID_ELFLOADER, (char * const *)newargv, newenvp);
+    ctx->newargv[n++] = ctx->shebang_argv0;   /* ld.so's argv[0]: shebang path for ps */
+    ctx->newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
+    ctx->newargv[n++] = ctx->shebang_argv0;   /* interpreter's argv[0]: shebang path */
+    ctx->newargv[n] = ctx->newfilename;       /* interpreter path (resolved) */
+}
 
-error:
-    free(newenvp);
 
+/*
+ * Get the executable path for the final exec call.
+ */
+const char *exec_get_path(exec_ctx_t *ctx)
+{
+    if (ctx->is_ld_so) {
+        return ctx->tmp;
+    }
+    return ANDROID_ELFLOADER;
+}
+
+
+/*
+ * Get the filename argument (for debugging).
+ */
+const char *exec_get_filename(exec_ctx_t *ctx)
+{
+    if (ctx->is_script) {
+        return ctx->newfilename;
+    }
+    return ctx->tmp;
+}
+
+
+/*
+ * Free resources allocated in the execution context.
+ */
+void exec_ctx_cleanup(exec_ctx_t *ctx)
+{
+    if (ctx->newenvp) {
+        /* Only free the preserved env vars we allocated (before original envp entries) */
+        /* For simplicity, just free the array - the individual strings from preserve_env
+         * were malloc'd but we don't track how many, so we'd need to be more careful.
+         * For now, accept this minor leak on exec failure paths. */
+        free(ctx->newenvp);
+        ctx->newenvp = NULL;
+    }
+}
+
+
+/*
+ * execve wrapper - uses shared exec_* functions
+ */
+wrapper(execve, int, (const char * filename, char * const argv [], char * const envp []))
+{
+    exec_ctx_t ctx;
+    int status;
+
+    debug("execve(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
+
+    exec_ctx_init(&ctx, argv, 1024);
+
+    if (exec_prepare_env(&ctx, envp) != 0) {
+        return -1;
+    }
+
+    exec_expand_filename(&ctx, filename);
+
+    /* If executing ld.so directly, don't wrap it */
+    if (ctx.is_ld_so) {
+        status = nextcall(execve)(ctx.tmp, argv, ctx.newenvp);
+        exec_ctx_cleanup(&ctx);
+        return status;
+    }
+
+    if (exec_read_header(&ctx) != 0) {
+        exec_ctx_cleanup(&ctx);
+        return -1;
+    }
+
+    if (ctx.is_script) {
+        exec_build_script_argv(&ctx, argv);
+    } else {
+        exec_build_elf_argv(&ctx, argv);
+    }
+
+    debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
+          exec_get_path(&ctx), ctx.newargv[0], ctx.newargv[1], ctx.newargv[2], ctx.newargv[3]);
+
+    status = nextcall(execve)(exec_get_path(&ctx), (char * const *)ctx.newargv, ctx.newenvp);
+
+    exec_ctx_cleanup(&ctx);
     return status;
 }
