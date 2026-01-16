@@ -26,14 +26,40 @@
 #include <string.h>
 #include <errno.h>
 #include <sys/ucontext.h>
+#include <sys/syscall.h>
 #include "libfakechroot.h"
 
+/* Require syscall numbers from system headers */
 #ifndef SYS_faccessat2
-#define SYS_faccessat2 439
+#error "SYS_faccessat2 not defined - check sys/syscall.h"
 #endif
+#ifndef SYS_clone3
+#error "SYS_clone3 not defined - check sys/syscall.h"
+#endif
+#ifndef SYS_close_range
+#error "SYS_close_range not defined - check sys/syscall.h"
+#endif
+
 #ifndef SYS_SECCOMP
 #define SYS_SECCOMP 1
 #endif
+
+/*
+ * Syscalls blocked by Android seccomp that need ENOSYS for fallback.
+ * Go and other runtimes bypass glibc and make direct syscalls.
+ * When seccomp blocks them, we return ENOSYS so they can fallback.
+ */
+static int is_blocked_syscall(int syscall_nr)
+{
+    switch (syscall_nr) {
+    case SYS_faccessat2:   /* Go falls back to faccessat */
+    case SYS_clone3:       /* Go falls back to clone */
+    case SYS_close_range:  /* Go falls back to close loop */
+        return 1;
+    default:
+        return 0;
+    }
+}
 
 /* Saved SIGSYS handler from other code (e.g., Go runtime) */
 /* Initialized when we install our handler, so always valid */
@@ -46,8 +72,8 @@ static struct sigaction saved_sigsys_handler;
  */
 static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
 {
-    /* Handle seccomp-blocked faccessat2 by returning ENOSYS */
-    if (info->si_code == SYS_SECCOMP && info->si_syscall == SYS_faccessat2) {
+    /* Handle seccomp-blocked syscalls by returning ENOSYS */
+    if (info->si_code == SYS_SECCOMP && is_blocked_syscall(info->si_syscall)) {
         ucontext_t *ctx = (ucontext_t *)ucontext;
 #ifdef __aarch64__
         /* On aarch64, x0 holds the return value */
@@ -57,7 +83,7 @@ static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
         /* On x86_64, rax holds the return value */
         ctx->uc_mcontext.gregs[REG_RAX] = -ENOSYS;
 #endif
-        debug("sigsys: blocked faccessat2, returning ENOSYS");
+        debug("sigsys: blocked syscall %d, returning ENOSYS", info->si_syscall);
         return;
     }
 
