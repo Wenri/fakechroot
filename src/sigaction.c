@@ -88,9 +88,25 @@ wrapper(sigaction, int, (int signum, const struct sigaction *act, struct sigacti
         return nextcall(sigaction)(signum, act, oldact);
     }
 
-    /* If someone is querying the current handler, return our handler info */
+    /*
+     * Make our handler fully transparent to callers.
+     * Return the saved handler (what they think is installed), not our actual handler.
+     */
+
+    /* Return the previously saved handler if requested */
+    if (oldact != NULL) {
+        if (have_saved_sigsys_handler) {
+            memcpy(oldact, &saved_sigsys_handler, sizeof(struct sigaction));
+        } else {
+            /* No saved handler yet - return SIG_DFL */
+            memset(oldact, 0, sizeof(struct sigaction));
+            oldact->sa_handler = SIG_DFL;
+        }
+    }
+
+    /* If just querying (act == NULL), we're done */
     if (act == NULL) {
-        return nextcall(sigaction)(signum, act, oldact);
+        return 0;
     }
 
     /* Someone (e.g., Go) is trying to install a SIGSYS handler */
@@ -99,12 +115,6 @@ wrapper(sigaction, int, (int signum, const struct sigaction *act, struct sigacti
     /* Save their handler for chaining */
     memcpy(&saved_sigsys_handler, act, sizeof(struct sigaction));
     have_saved_sigsys_handler = 1;
-
-    /* If they want the old handler, give them what was there before */
-    if (oldact != NULL) {
-        /* Get the current handler (which should be ours) */
-        nextcall(sigaction)(signum, NULL, oldact);
-    }
 
     /* Don't actually install their handler - keep ours installed */
     /* Return success to make them think it worked */
