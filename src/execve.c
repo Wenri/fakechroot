@@ -177,7 +177,7 @@ int exec_read_header(exec_ctx_t *ctx)
         return -1;
     }
 
-    ctx->hashbang_len = i;
+    /* Null-terminate the buffer */
     ctx->hashbang[i] = ctx->hashbang[i + 1] = '\0';
 
     /* Check for hashbang */
