@@ -36,8 +36,8 @@
 #endif
 
 /* Saved SIGSYS handler from other code (e.g., Go runtime) */
+/* Initialized when we install our handler, so always valid */
 static struct sigaction saved_sigsys_handler;
-static int have_saved_sigsys_handler = 0;
 
 /*
  * SIGSYS handler for Android seccomp bypass.
@@ -62,19 +62,17 @@ static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
     }
 
     /* Chain to saved handler (e.g., Go's handler) for other SIGSYS signals */
-    if (have_saved_sigsys_handler) {
-        if (saved_sigsys_handler.sa_flags & SA_SIGINFO) {
-            if (saved_sigsys_handler.sa_sigaction != NULL) {
-                debug("sigsys: chaining to saved SA_SIGINFO handler");
-                saved_sigsys_handler.sa_sigaction(sig, info, ucontext);
-            }
-        } else {
-            if (saved_sigsys_handler.sa_handler != NULL &&
-                saved_sigsys_handler.sa_handler != SIG_IGN &&
-                saved_sigsys_handler.sa_handler != SIG_DFL) {
-                debug("sigsys: chaining to saved handler");
-                saved_sigsys_handler.sa_handler(sig);
-            }
+    if (saved_sigsys_handler.sa_flags & SA_SIGINFO) {
+        if (saved_sigsys_handler.sa_sigaction != NULL) {
+            debug("sigsys: chaining to saved SA_SIGINFO handler");
+            saved_sigsys_handler.sa_sigaction(sig, info, ucontext);
+        }
+    } else {
+        if (saved_sigsys_handler.sa_handler != NULL &&
+            saved_sigsys_handler.sa_handler != SIG_IGN &&
+            saved_sigsys_handler.sa_handler != SIG_DFL) {
+            debug("sigsys: chaining to saved handler");
+            saved_sigsys_handler.sa_handler(sig);
         }
     }
 }
@@ -95,13 +93,7 @@ wrapper(sigaction, int, (int signum, const struct sigaction *act, struct sigacti
 
     /* Return the previously saved handler if requested */
     if (oldact != NULL) {
-        if (have_saved_sigsys_handler) {
-            memcpy(oldact, &saved_sigsys_handler, sizeof(struct sigaction));
-        } else {
-            /* No saved handler yet - return SIG_DFL */
-            memset(oldact, 0, sizeof(struct sigaction));
-            oldact->sa_handler = SIG_DFL;
-        }
+        memcpy(oldact, &saved_sigsys_handler, sizeof(struct sigaction));
     }
 
     /* If just querying (act == NULL), we're done */
@@ -114,7 +106,6 @@ wrapper(sigaction, int, (int signum, const struct sigaction *act, struct sigacti
 
     /* Save their handler for chaining */
     memcpy(&saved_sigsys_handler, act, sizeof(struct sigaction));
-    have_saved_sigsys_handler = 1;
 
     /* Don't actually install their handler - keep ours installed */
     /* Return success to make them think it worked */
@@ -134,7 +125,7 @@ void fakechroot_install_sigsys_handler(void)
     sa.sa_flags = SA_SIGINFO;
     sigemptyset(&sa.sa_mask);
 
-    if (nextcall(sigaction)(SIGSYS, &sa, NULL) == 0) {
+    if (nextcall(sigaction)(SIGSYS, &sa, &saved_sigsys_handler) == 0) {
         debug("sigsys: handler installed for seccomp bypass");
     }
 }
