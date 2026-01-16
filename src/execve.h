@@ -44,9 +44,6 @@ typedef struct {
     char argv0[FAKECHROOT_PATH_MAX];          /* Original argv[0] (for --argv0) */
     char shebang_argv0[FAKECHROOT_PATH_MAX];  /* Shebang interpreter path for argv[0] */
 
-    /* Pointers to VLAs allocated by caller */
-    char **newenvp;
-    const char **newargv;
 
     /* Execution flags */
     int is_script;      /* 1 if hashbang script, 0 if ELF binary */
@@ -57,20 +54,14 @@ typedef struct {
 } exec_ctx_t;
 
 /*
- * Prepare execution context: initialize, copy environment, expand filename.
+ * Prepare execution context: initialize and expand filename.
  *
  * @param ctx       Context to initialize
- * @param newargv   VLA for arguments (allocated by caller)
- * @param newenvp   VLA for environment (allocated by caller)
- * @param envbuf    VLA buffer for preserved env strings (allocated by caller)
  * @param filename  Original filename (will be expanded)
- * @param argv      Original argument vector (argv[0] is preserved)
- * @param envp      Original environment
+ * @param argv      Original argument vector (argv[0] is preserved for --argv0)
  * @return 0 on success, -1 on error (errno set)
  */
-int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
-                 char *envbuf, const char *filename,
-                 char * const argv[], char * const envp[]);
+int exec_prepare(exec_ctx_t *ctx, const char *filename, char * const argv[]);
 
 /*
  * Build environment array with preserved variables.
@@ -96,21 +87,21 @@ int exec_read_header(exec_ctx_t *ctx);
 
 /*
  * Build argument vector for ELF binary execution via elfloader.
- * Result is stored in ctx->newargv.
  *
- * @param ctx   Execution context
- * @param argv  Original argument vector
+ * @param ctx      Execution context
+ * @param newargv  Argument array to populate
+ * @param argv     Original argument vector
  */
-void exec_build_elf_argv(exec_ctx_t *ctx, char * const argv[]);
+void exec_build_elf_argv(exec_ctx_t *ctx, const char **newargv, char * const argv[]);
 
 /*
  * Parse hashbang line and build argument vector for script execution.
- * Result is stored in ctx->newargv.
  *
- * @param ctx   Execution context
- * @param argv  Original argument vector
+ * @param ctx      Execution context
+ * @param newargv  Argument array to populate
+ * @param argv     Original argument vector
  */
-void exec_build_script_argv(exec_ctx_t *ctx, char * const argv[]);
+void exec_build_script_argv(exec_ctx_t *ctx, const char **newargv, char * const argv[]);
 
 /*
  * Get the executable path for the final exec call.

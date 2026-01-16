@@ -123,11 +123,9 @@ size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf)
 
 
 /*
- * Prepare execution context: initialize, copy environment, expand filename.
+ * Prepare execution context: initialize and expand filename.
  */
-int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
-                 char *envbuf, const char *filename,
-                 char * const argv[], char * const envp[])
+int exec_prepare(exec_ctx_t *ctx, const char *filename, char * const argv[])
 {
     /* These local refs are needed for expand_chroot_path macro */
     char *fakechroot_abspath = ctx->fakechroot_abspath;
@@ -135,8 +133,6 @@ int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
 
     /* Initialize context */
     memset(ctx, 0, sizeof(*ctx));
-    ctx->newargv = newargv;
-    ctx->newenvp = newenvp;
 
     /* Preserve original argv[0] for --argv0 option.
      * This is important for login shells where argv[0] is "-zsh" or "-bash" */
@@ -144,9 +140,6 @@ int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
         strncpy(ctx->argv0, argv[0], FAKECHROOT_PATH_MAX - 1);
         ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
     }
-
-    /* Build environment: preserved vars + original envp */
-    exec_preserve_env(envp, ctx->newenvp, envbuf);
 
     /* Expand filename path */
     expand_chroot_path(filename);
@@ -203,22 +196,22 @@ int exec_read_header(exec_ctx_t *ctx)
  * - --argv0 + argv0 sets the program's argv[0] (for login shell detection)
  * - filename is the actual program to execute
  */
-void exec_build_elf_argv(exec_ctx_t *ctx, char * const argv[])
+void exec_build_elf_argv(exec_ctx_t *ctx, const char **newargv, char * const argv[])
 {
     unsigned int i, n;
 
     /* Copy user arguments (skip original argv[0], it's passed via --argv0) */
     for (i = 1, n = EXEC_EXTRA_ARGV; argv[i] != NULL; ) {
-        ctx->newargv[n++] = argv[i++];
+        newargv[n++] = argv[i++];
     }
-    ctx->newargv[n] = NULL;
+    newargv[n] = NULL;
 
     /* Set up elfloader arguments */
     n = 0;
-    ctx->newargv[n++] = ctx->argv0;           /* ld.so's argv[0]: command name for ps */
-    ctx->newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
-    ctx->newargv[n++] = ctx->argv0;           /* program's argv[0] */
-    ctx->newargv[n] = ctx->tmp;               /* program path */
+    newargv[n++] = ctx->argv0;           /* ld.so's argv[0]: command name for ps */
+    newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
+    newargv[n++] = ctx->argv0;           /* program's argv[0] */
+    newargv[n] = ctx->tmp;               /* program path */
 }
 
 
@@ -228,7 +221,7 @@ void exec_build_elf_argv(exec_ctx_t *ctx, char * const argv[])
  * Final argv layout:
  *   [shebang_interp, --argv0, shebang_interp, interpreter, interp_args..., script_path, user_args...]
  */
-void exec_build_script_argv(exec_ctx_t *ctx, char * const argv[])
+void exec_build_script_argv(exec_ctx_t *ctx, const char **newargv, char * const argv[])
 {
     /* These local refs are needed for expand_chroot_path macro */
     char *fakechroot_abspath = ctx->fakechroot_abspath;
@@ -260,7 +253,7 @@ void exec_build_script_argv(exec_ctx_t *ctx, char * const argv[])
                     strncpy(ctx->newfilename, ptr, FAKECHROOT_PATH_MAX - 1);
                     ctx->newfilename[FAKECHROOT_PATH_MAX - 1] = '\0';
                 }
-                ctx->newargv[n++] = &ctx->hashbang[j];
+                newargv[n++] = &ctx->hashbang[j];
             }
             j = i + 1;
         }
@@ -269,30 +262,30 @@ void exec_build_script_argv(exec_ctx_t *ctx, char * const argv[])
     }
 
     /* Add the script path for the interpreter */
-    ctx->newargv[n++] = ctx->tmp;
+    newargv[n++] = ctx->tmp;
 
     /* Add user arguments (skip argv[0]) */
     for (i = 1; argv[i] != NULL; ) {
-        ctx->newargv[n++] = argv[i++];
+        newargv[n++] = argv[i++];
     }
-    ctx->newargv[n] = NULL;
+    newargv[n] = NULL;
 
     /* Now shift everything to make room for elfloader args at the front.
      * Skip newargv[0] (interpreter from hashbang) since it's redundant with newfilename. */
     j = EXEC_EXTRA_ARGV;
 
     /* Shift elements from [1..n-1] to [j..j+n-2], iterate backwards */
-    ctx->newargv[j + n - 1] = NULL;
+    newargv[j + n - 1] = NULL;
     for (i = n - 1; i >= 1; i--) {
-        ctx->newargv[i - 1 + j] = ctx->newargv[i];
+        newargv[i - 1 + j] = newargv[i];
     }
 
     /* Set up elfloader arguments */
     n = 0;
-    ctx->newargv[n++] = ctx->shebang_argv0;   /* ld.so's argv[0]: shebang path for ps */
-    ctx->newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
-    ctx->newargv[n++] = ctx->shebang_argv0;   /* interpreter's argv[0]: shebang path */
-    ctx->newargv[n] = ctx->newfilename;       /* interpreter path (resolved) */
+    newargv[n++] = ctx->shebang_argv0;   /* ld.so's argv[0]: shebang path for ps */
+    newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
+    newargv[n++] = ctx->shebang_argv0;   /* interpreter's argv[0]: shebang path */
+    newargv[n] = ctx->newfilename;       /* interpreter path (resolved) */
 }
 
 
@@ -328,13 +321,15 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     char *newenvp[envc + preserve_env_list_count + 1];
     char envbuf[exec_preserve_env(envp, NULL, NULL) + 1];
 
-    if (exec_prepare(&ctx, newargv, newenvp, envbuf, filename, argv, envp) != 0) {
+    /* Build environment and prepare context */
+    exec_preserve_env(envp, newenvp, envbuf);
+    if (exec_prepare(&ctx, filename, argv) != 0) {
         return -1;
     }
 
     /* If executing ld.so directly, don't wrap it */
     if (ctx.is_ld_so) {
-        return nextcall(execve)(ctx.tmp, argv, ctx.newenvp);
+        return nextcall(execve)(ctx.tmp, argv, newenvp);
     }
 
     if (exec_read_header(&ctx) != 0) {
@@ -342,13 +337,13 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     }
 
     if (ctx.is_script) {
-        exec_build_script_argv(&ctx, argv);
+        exec_build_script_argv(&ctx, newargv, argv);
     } else {
-        exec_build_elf_argv(&ctx, argv);
+        exec_build_elf_argv(&ctx, newargv, argv);
     }
 
     debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
-          exec_get_path(&ctx), ctx.newargv[0], ctx.newargv[1], ctx.newargv[2], ctx.newargv[3]);
+          exec_get_path(&ctx), newargv[0], newargv[1], newargv[2], newargv[3]);
 
-    return nextcall(execve)(exec_get_path(&ctx), (char * const *)ctx.newargv, ctx.newenvp);
+    return nextcall(execve)(exec_get_path(&ctx), (char * const *)newargv, newenvp);
 }

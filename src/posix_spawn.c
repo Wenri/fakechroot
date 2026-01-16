@@ -51,13 +51,15 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     char *newenvp[envc + preserve_env_list_count + 1];
     char envbuf[exec_preserve_env(envp, NULL, NULL) + 1];
 
-    if (exec_prepare(&ctx, newargv, newenvp, envbuf, filename, argv, envp) != 0) {
+    /* Build environment and prepare context */
+    exec_preserve_env(envp, newenvp, envbuf);
+    if (exec_prepare(&ctx, filename, argv) != 0) {
         return errno;
     }
 
     /* If executing ld.so directly, don't wrap it */
     if (ctx.is_ld_so) {
-        return nextcall(posix_spawn)(pid, ctx.tmp, file_actions, attrp, argv, ctx.newenvp);
+        return nextcall(posix_spawn)(pid, ctx.tmp, file_actions, attrp, argv, newenvp);
     }
 
     if (exec_read_header(&ctx) != 0) {
@@ -65,16 +67,16 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     }
 
     if (ctx.is_script) {
-        exec_build_script_argv(&ctx, argv);
+        exec_build_script_argv(&ctx, newargv, argv);
     } else {
-        exec_build_elf_argv(&ctx, argv);
+        exec_build_elf_argv(&ctx, newargv, argv);
     }
 
     debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
-          exec_get_path(&ctx), ctx.newargv[0], ctx.newargv[1], ctx.newargv[2], ctx.newargv[3]);
+          exec_get_path(&ctx), newargv[0], newargv[1], newargv[2], newargv[3]);
 
     return nextcall(posix_spawn)(pid, exec_get_path(&ctx), file_actions, attrp,
-                                 (char * const *)ctx.newargv, ctx.newenvp);
+                                 (char * const *)newargv, newenvp);
 }
 
 #endif
