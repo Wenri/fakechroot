@@ -118,7 +118,7 @@ size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf)
         newenvp[envpos] = NULL;
     }
 
-    return total > 0 ? total : 1;  /* At least 1 byte for empty VLA */
+    return total;
 }
 
 
@@ -326,8 +326,7 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     /* VLAs for exact-size allocation */
     const char *newargv[argc + EXEC_EXTRA_ARGV + 1];
     char *newenvp[envc + preserve_env_list_count + 1];
-    size_t envbuf_size = exec_preserve_env(envp, NULL, NULL);
-    char envbuf[envbuf_size];
+    char envbuf[exec_preserve_env(envp, NULL, NULL) + 1];
 
     if (exec_prepare(&ctx, newargv, newenvp, envbuf, filename, argv, envp) != 0) {
         return -1;

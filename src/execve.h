@@ -81,7 +81,7 @@ int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
  * @param envp       Original environment
  * @param newenvp    Environment array to populate (NULL for size calc only)
  * @param envbuf     Buffer for preserved env strings (NULL for size calc only)
- * @return Buffer size needed/used (minimum 1 for empty VLA)
+ * @return Buffer size needed/used (may be 0, caller should use size+1 for VLA)
  */
 size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf);
 
