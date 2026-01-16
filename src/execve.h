@@ -22,11 +22,17 @@
 
 #include "libfakechroot.h"
 
-/* Extra argv slots needed for elfloader: argv0 + --argv0 + argv0 + filename */
-#define EXEC_EXTRA_ARGV 4
+/* Elfloader prefix length: [argv0, --argv0, argv0, program] */
+#define EXEC_PREFIX_LEN 4
 
 /* Max shebang args (Linux kernel only passes 1 optional arg after interpreter) */
 #define MAX_SHEBANG_ARGS 1
+
+/* Extra slots needed beyond argc for script argv:
+ * - Replace argv[0] with prefix (4 elements) -> +3
+ * - Add script path -> +1
+ * - Add shebang arg (optional) -> +1
+ * Total extra: 3 + 1 + 1 = 5, but we express as PREFIX_LEN + SHEBANG_ARGS + 1 */
 
 /* Execution type determined by file header */
 typedef enum {

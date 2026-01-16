@@ -46,9 +46,10 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     for (envc = 0, p = (char **)envp; envp && *p; p++) envc++;
 
     /* VLAs for exact-size allocation
-     * newargv needs: EXEC_EXTRA_ARGV + MAX_SHEBANG_ARGS + 1 (script) + (argc-1) (user args) + 1 (NULL)
-     * Simplified: argc + EXEC_EXTRA_ARGV + MAX_SHEBANG_ARGS + 1 */
-    char *newargv[argc + EXEC_EXTRA_ARGV + MAX_SHEBANG_ARGS + 1];
+     * newargv max (script with shebang arg):
+     *   prefix(4) + shebang_arg(1) + script(1) + user_args(argc-1) + NULL(1) = argc + 6
+     * Expressed as: argc + EXEC_PREFIX_LEN(4) + MAX_SHEBANG_ARGS(1) + 1 (script path) */
+    char *newargv[argc + EXEC_PREFIX_LEN + MAX_SHEBANG_ARGS + 1];
     char *newenvp[envc + preserve_env_list_count + 1];
     char envbuf[exec_preserve_env(envp, NULL, NULL) + 1];
 
