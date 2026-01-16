@@ -22,9 +22,16 @@
 
 #include "libfakechroot.h"
 
+/* Maximum number of arguments and environment variables */
+#define EXEC_MAX_ARGV 1024
+#define EXEC_MAX_ENVP 512
+
 /*
  * Execution context structure - holds all buffers and state for exec operations.
  * Used by both execve() and posix_spawn() to share common logic.
+ *
+ * All arrays are statically allocated to avoid malloc/free overhead.
+ * Since exec replaces the process on success, stack usage doesn't matter.
  */
 typedef struct {
     /* Buffers required by expand_chroot_path macro */
@@ -38,10 +45,10 @@ typedef struct {
     char argv0[FAKECHROOT_PATH_MAX];          /* Original argv[0] (for --argv0) */
     char shebang_argv0[FAKECHROOT_PATH_MAX];  /* Shebang interpreter path for argv[0] */
 
-    /* Prepared environment and arguments */
-    char **newenvp;
-    const char **newargv;
-    size_t argv_max;
+    /* Prepared environment and arguments - statically allocated */
+    char *newenvp[EXEC_MAX_ENVP];
+    const char *newargv[EXEC_MAX_ARGV];
+    unsigned int newenvp_alloced;  /* Number of env strings we allocated (for cleanup) */
 
     /* Execution flags */
     int is_script;      /* 1 if hashbang script, 0 if ELF binary */
@@ -52,32 +59,17 @@ typedef struct {
 } exec_ctx_t;
 
 /*
- * Initialize execution context.
- * Must be called before any other exec_* functions.
+ * Prepare execution context: initialize, copy environment, expand filename.
+ * This combines initialization, environment preparation, and path expansion.
  *
  * @param ctx       Context to initialize
+ * @param filename  Original filename (will be expanded)
  * @param argv      Original argument vector (argv[0] is preserved)
- * @param argv_max  Maximum number of arguments
+ * @param envp      Original environment
+ * @return 0 on success, -1 on error (errno set)
  */
-void exec_ctx_init(exec_ctx_t *ctx, char * const argv[], size_t argv_max);
-
-/*
- * Prepare environment by copying envp and preserving required variables.
- *
- * @param ctx   Execution context
- * @param envp  Original environment
- * @return 0 on success, -1 on error (errno set to ENOMEM)
- */
-int exec_prepare_env(exec_ctx_t *ctx, char * const envp[]);
-
-/*
- * Expand filename path and check if it's a dynamic linker.
- * Sets ctx->is_ld_so if the file is ld.so.
- *
- * @param ctx       Execution context
- * @param filename  Original filename (will be expanded in ctx->tmp)
- */
-void exec_expand_filename(exec_ctx_t *ctx, const char *filename);
+int exec_prepare(exec_ctx_t *ctx, const char *filename,
+                 char * const argv[], char * const envp[]);
 
 /*
  * Read file header to detect hashbang scripts vs ELF binaries.
@@ -115,17 +107,8 @@ void exec_build_script_argv(exec_ctx_t *ctx, char * const argv[]);
 const char *exec_get_path(exec_ctx_t *ctx);
 
 /*
- * Get the filename argument for the exec call.
- * For ELF binaries: the program path
- * For scripts: the interpreter path
- *
- * @param ctx  Execution context
- * @return Filename to pass to elfloader
- */
-const char *exec_get_filename(exec_ctx_t *ctx);
-
-/*
  * Free resources allocated in the execution context.
+ * Only needed on error paths - on exec success the process is replaced.
  *
  * @param ctx  Execution context
  */

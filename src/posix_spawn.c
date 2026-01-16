@@ -41,13 +41,9 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
 
     debug("posix_spawn(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
 
-    exec_ctx_init(&ctx, argv, 1024);
-
-    if (exec_prepare_env(&ctx, envp) != 0) {
+    if (exec_prepare(&ctx, filename, argv, envp) != 0) {
         return errno;
     }
-
-    exec_expand_filename(&ctx, filename);
 
     /* If executing ld.so directly, don't wrap it */
     if (ctx.is_ld_so) {

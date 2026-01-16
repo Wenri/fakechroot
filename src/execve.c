@@ -23,9 +23,6 @@
 #include <errno.h>
 #include <stddef.h>
 #include <unistd.h>
-#ifdef HAVE_ALLOCA_H
-# include <alloca.h>
-#endif
 #include <stdlib.h>
 #include <fcntl.h>
 #include <string.h>
@@ -36,90 +33,6 @@
 #include "readlink.h"
 #include "android-config.h"
 #include "execve.h"
-
-
-/*
- * Initialize execution context.
- */
-void exec_ctx_init(exec_ctx_t *ctx, char * const argv[], size_t argv_max)
-{
-    memset(ctx, 0, sizeof(*ctx));
-    ctx->argv_max = argv_max;
-    ctx->newargv = alloca(argv_max * sizeof(const char *));
-
-    /* Preserve original argv[0] for --argv0 option.
-     * This is important for login shells where argv[0] is "-zsh" or "-bash" */
-    if (argv && argv[0]) {
-        strncpy(ctx->argv0, argv[0], FAKECHROOT_PATH_MAX - 1);
-        ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
-    }
-}
-
-
-/*
- * Prepare environment by copying envp and preserving required variables.
- */
-int exec_prepare_env(exec_ctx_t *ctx, char * const envp[])
-{
-    char **ep;
-    char *key, *env;
-    char tmpkey[1024], *tp;
-    size_t sizeenvp = 0;
-    unsigned int j, newenvppos;
-
-    /* Scan envp and check its size */
-    if (envp) {
-        for (ep = (char **)envp; *ep != NULL; ++ep) {
-            sizeenvp++;
-        }
-    }
-
-    /* Allocate new environment */
-    ctx->newenvp = malloc((sizeenvp + preserve_env_list_count + 1) * sizeof(char *));
-    if (ctx->newenvp == NULL) {
-        __set_errno(ENOMEM);
-        return -1;
-    }
-    newenvppos = 0;
-
-    /* Preserve environment variables from preserve_env_list if not in envp */
-    for (j = 0; j < preserve_env_list_count; j++) {
-        key = preserve_env_list[j];
-        env = getenv(key);
-        if (env != NULL && *env) {
-            if (envp) {
-                for (ep = (char **)envp; *ep != NULL; ++ep) {
-                    strncpy(tmpkey, *ep, 1024);
-                    tmpkey[1023] = 0;
-                    if ((tp = strchr(tmpkey, '=')) != NULL) {
-                        *tp = 0;
-                        if (strcmp(tmpkey, key) == 0) {
-                            goto skip_preserve;
-                        }
-                    }
-                }
-            }
-            ctx->newenvp[newenvppos] = malloc(strlen(key) + strlen(env) + 3);
-            if (ctx->newenvp[newenvppos]) {
-                strcpy(ctx->newenvp[newenvppos], key);
-                strcat(ctx->newenvp[newenvppos], "=");
-                strcat(ctx->newenvp[newenvppos], env);
-                newenvppos++;
-            }
-        skip_preserve:;
-        }
-    }
-
-    /* Append original envp to new envp */
-    if (envp) {
-        for (ep = (char **)envp; *ep != NULL; ++ep) {
-            ctx->newenvp[newenvppos++] = *ep;
-        }
-    }
-
-    ctx->newenvp[newenvppos] = NULL;
-    return 0;
-}
 
 
 /*
@@ -141,17 +54,73 @@ static int is_dynamic_linker(const char *filename)
 
 
 /*
- * Expand filename path and check if it's a dynamic linker.
- *
- * Note: This function uses ctx->fakechroot_abspath and ctx->fakechroot_buf
- * which are required by the expand_chroot_path macro.
+ * Prepare execution context: initialize, copy environment, expand filename.
  */
-void exec_expand_filename(exec_ctx_t *ctx, const char *filename)
+int exec_prepare(exec_ctx_t *ctx, const char *filename,
+                 char * const argv[], char * const envp[])
 {
     /* These local refs are needed for expand_chroot_path macro */
     char *fakechroot_abspath = ctx->fakechroot_abspath;
     char *fakechroot_buf = ctx->fakechroot_buf;
 
+    char **ep;
+    char *key, *env;
+    char tmpkey[1024], *tp;
+    unsigned int j, envpos;
+
+    /* Initialize context */
+    memset(ctx, 0, sizeof(*ctx));
+
+    /* Preserve original argv[0] for --argv0 option.
+     * This is important for login shells where argv[0] is "-zsh" or "-bash" */
+    if (argv && argv[0]) {
+        strncpy(ctx->argv0, argv[0], FAKECHROOT_PATH_MAX - 1);
+        ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
+    }
+
+    /* Prepare environment: preserve required vars + copy original envp */
+    envpos = 0;
+    ctx->newenvp_alloced = 0;
+
+    for (j = 0; j < preserve_env_list_count && envpos < EXEC_MAX_ENVP - 1; j++) {
+        key = preserve_env_list[j];
+        env = getenv(key);
+        if (env != NULL && *env) {
+            /* Check if already in envp */
+            if (envp) {
+                for (ep = (char **)envp; *ep != NULL; ++ep) {
+                    strncpy(tmpkey, *ep, 1024);
+                    tmpkey[1023] = 0;
+                    if ((tp = strchr(tmpkey, '=')) != NULL) {
+                        *tp = 0;
+                        if (strcmp(tmpkey, key) == 0) {
+                            goto skip_preserve;
+                        }
+                    }
+                }
+            }
+            /* Allocate and add preserved var */
+            ctx->newenvp[envpos] = malloc(strlen(key) + strlen(env) + 2);
+            if (ctx->newenvp[envpos]) {
+                strcpy(ctx->newenvp[envpos], key);
+                strcat(ctx->newenvp[envpos], "=");
+                strcat(ctx->newenvp[envpos], env);
+                envpos++;
+                ctx->newenvp_alloced++;
+            }
+        skip_preserve:;
+        }
+    }
+
+    /* Append original envp */
+    if (envp) {
+        for (ep = (char **)envp; *ep != NULL && envpos < EXEC_MAX_ENVP - 1; ++ep) {
+            ctx->newenvp[envpos++] = *ep;
+        }
+    }
+    ctx->newenvp[envpos] = NULL;
+
+    /* Expand filename path */
     expand_chroot_path(filename);
     strncpy(ctx->tmp, filename, FAKECHROOT_PATH_MAX - 1);
     ctx->tmp[FAKECHROOT_PATH_MAX - 1] = '\0';
@@ -161,6 +130,8 @@ void exec_expand_filename(exec_ctx_t *ctx, const char *filename)
     if (ctx->is_ld_so) {
         debug("exec: executing dynamic linker directly, no wrapping: %s", ctx->tmp);
     }
+
+    return 0;
 }
 
 
@@ -210,7 +181,7 @@ void exec_build_elf_argv(exec_ctx_t *ctx, char * const argv[])
     int extra_args = 1 + 2 + 1;  /* argv0 + --argv0 <name> + filename */
 
     /* Copy user arguments (skip original argv[0], it's passed via --argv0) */
-    for (i = 1, n = extra_args; argv[i] != NULL && i < ctx->argv_max; ) {
+    for (i = 1, n = extra_args; argv[i] != NULL && n < EXEC_MAX_ARGV - 1; ) {
         ctx->newargv[n++] = argv[i++];
     }
     ctx->newargv[n] = NULL;
@@ -275,7 +246,7 @@ void exec_build_script_argv(exec_ctx_t *ctx, char * const argv[])
     ctx->newargv[n++] = ctx->tmp;
 
     /* Add user arguments (skip argv[0]) */
-    for (i = 1; argv[i] != NULL && i < ctx->argv_max; ) {
+    for (i = 1; argv[i] != NULL && n < EXEC_MAX_ARGV - 1; ) {
         ctx->newargv[n++] = argv[i++];
     }
     ctx->newargv[n] = NULL;
@@ -285,8 +256,8 @@ void exec_build_script_argv(exec_ctx_t *ctx, char * const argv[])
     extra_args = 1 + 2 + 1;  /* shebang_argv0 + --argv0 + shebang_argv0 + newfilename */
     j = extra_args;
 
-    if (n >= ctx->argv_max - j) {
-        n = ctx->argv_max - j;
+    if (n >= EXEC_MAX_ARGV - j) {
+        n = EXEC_MAX_ARGV - j;
     }
 
     /* Shift elements from [1..n-1] to [j..j+n-2], iterate backwards */
@@ -317,30 +288,16 @@ const char *exec_get_path(exec_ctx_t *ctx)
 
 
 /*
- * Get the filename argument (for debugging).
- */
-const char *exec_get_filename(exec_ctx_t *ctx)
-{
-    if (ctx->is_script) {
-        return ctx->newfilename;
-    }
-    return ctx->tmp;
-}
-
-
-/*
  * Free resources allocated in the execution context.
+ * Only frees the env strings we allocated for preserved variables.
  */
 void exec_ctx_cleanup(exec_ctx_t *ctx)
 {
-    if (ctx->newenvp) {
-        /* Only free the preserved env vars we allocated (before original envp entries) */
-        /* For simplicity, just free the array - the individual strings from preserve_env
-         * were malloc'd but we don't track how many, so we'd need to be more careful.
-         * For now, accept this minor leak on exec failure paths. */
-        free(ctx->newenvp);
-        ctx->newenvp = NULL;
+    unsigned int i;
+    for (i = 0; i < ctx->newenvp_alloced; i++) {
+        free(ctx->newenvp[i]);
     }
+    ctx->newenvp_alloced = 0;
 }
 
 
@@ -354,13 +311,9 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
 
     debug("execve(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
 
-    exec_ctx_init(&ctx, argv, 1024);
-
-    if (exec_prepare_env(&ctx, envp) != 0) {
+    if (exec_prepare(&ctx, filename, argv, envp) != 0) {
         return -1;
     }
-
-    exec_expand_filename(&ctx, filename);
 
     /* If executing ld.so directly, don't wrap it */
     if (ctx.is_ld_so) {
