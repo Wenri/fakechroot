@@ -231,9 +231,13 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
 
+    /* Null-terminate at first newline - we only care about shebang line */
+    char *nl = strchr(ctx->hashbang, '\n');
+    if (nl) *nl = '\0';
+
     /* Get interpreter (first whitespace-delimited token after "#!")
      * shebangArg is used as saveptr, will point to rest of line */
-    char *originalInterp = strtok_r(ctx->hashbang + 2, " \t\n", shebangArg);
+    char *originalInterp = strtok_r(ctx->hashbang + 2, " \t", shebangArg);
     if (!originalInterp) {
         *shebangArg = NULL;
         return NULL;
@@ -246,15 +250,14 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
     strncpy(ctx->argv0, ptr, FAKECHROOT_PATH_MAX - 1);
     ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
 
-    /* Clean up shebangArg: skip whitespace, null-terminate at newline */
+    /* Clean up shebangArg: skip whitespace */
     while (**shebangArg == ' ' || **shebangArg == '\t') (*shebangArg)++;
 
-    if (**shebangArg && **shebangArg != '\n') {
-        char *nl = strchr(*shebangArg, '\n');
-        if (nl) *nl = '\0';
-        debug("exec: shebangArg=\"%s\"", *shebangArg);
-    } else {
+    /* If empty, set to NULL */
+    if (!**shebangArg) {
         *shebangArg = NULL;
+    } else {
+        debug("exec: shebangArg=\"%s\"", *shebangArg);
     }
 
     return originalInterp;
