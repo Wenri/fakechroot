@@ -36,9 +36,10 @@
 
 /* Execution type determined by file header */
 typedef enum {
-    EXEC_TYPE_ELF,      /* Regular ELF binary */
-    EXEC_TYPE_SCRIPT,   /* Hashbang script (#!) */
-    EXEC_TYPE_LDSO      /* Dynamic linker (ld.so) - no wrapping needed */
+    EXEC_TYPE_ELF,          /* Regular ELF binary - needs ld.so wrapper */
+    EXEC_TYPE_ELF_DIRECT,   /* Already-patched ELF - execute directly */
+    EXEC_TYPE_SCRIPT,       /* Hashbang script (#!) */
+    EXEC_TYPE_LDSO          /* Dynamic linker (ld.so) - no wrapping needed */
 } exec_type_t;
 
 /*
@@ -46,11 +47,12 @@ typedef enum {
  * Used by both execve() and posix_spawn() to share common logic.
  */
 typedef struct {
-    char hashbang[FAKECHROOT_PATH_MAX];         /* File header (scripts: contains original interp) */
+    char hashbang[FAKECHROOT_PATH_MAX];         /* Script: shebang line (original interp)
+                                                   ELF: PT_INTERP path (for direct exec check) */
     char expandedFilename[FAKECHROOT_PATH_MAX]; /* Expanded path to execute */
     char argv0[FAKECHROOT_PATH_MAX];            /* ELF: original argv[0] (e.g., "-zsh")
                                                    Script: expanded interpreter path */
-    exec_type_t type;   /* Execution type (ELF, script, or ld.so) */
+    exec_type_t type;   /* Execution type (ELF, ELF_DIRECT, script, or ld.so) */
 } exec_ctx_t;
 
 /*
@@ -90,7 +92,8 @@ int exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]);
  * Get the executable path for the final exec call.
  *
  * @param ctx  Execution context
- * @return ANDROID_ELFLOADER for wrapped execution, or ctx->expandedFilename for direct ld.so
+ * @return ANDROID_ELFLOADER for wrapped execution,
+ *         or ctx->expandedFilename for direct execution (ld.so, patched ELF)
  */
 const char *exec_get_path(exec_ctx_t *ctx);
 

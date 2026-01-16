@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <string.h>
+#include <elf.h>
 #include "strchrnul.h"
 #include "libfakechroot.h"
 #include "open.h"
@@ -49,6 +50,143 @@ static int is_dynamic_linker(const char *filename)
             return 1;
         }
     }
+    return 0;
+}
+
+
+/*
+ * Read PT_INTERP from 64-bit ELF file.
+ * Stores interpreter path in ctx->hashbang.
+ * Returns 0 on success, -1 on error or if no PT_INTERP found.
+ */
+static int exec_read_elf64_interp(exec_ctx_t *ctx, int fd, const unsigned char *header)
+{
+    Elf64_Ehdr *ehdr = (Elf64_Ehdr *)header;
+    Elf64_Phdr phdr;
+    int i;
+
+    /* Iterate program headers looking for PT_INTERP */
+    for (i = 0; i < ehdr->e_phnum; i++) {
+        off_t phdr_offset = ehdr->e_phoff + (i * ehdr->e_phentsize);
+
+        if (lseek(fd, phdr_offset, SEEK_SET) == (off_t)-1) {
+            return -1;
+        }
+
+        if (read(fd, &phdr, sizeof(phdr)) != sizeof(phdr)) {
+            return -1;
+        }
+
+        if (phdr.p_type == PT_INTERP) {
+            /* Validate size */
+            if (phdr.p_filesz == 0 || phdr.p_filesz >= FAKECHROOT_PATH_MAX) {
+                return -1;
+            }
+
+            if (lseek(fd, phdr.p_offset, SEEK_SET) == (off_t)-1) {
+                return -1;
+            }
+
+            /* Read interpreter path into hashbang buffer */
+            ssize_t n = read(fd, ctx->hashbang, phdr.p_filesz);
+            if (n != (ssize_t)phdr.p_filesz) {
+                return -1;
+            }
+            ctx->hashbang[phdr.p_filesz] = '\0';
+            return 0;
+        }
+    }
+
+    return -1;  /* No PT_INTERP found (static binary) */
+}
+
+
+/*
+ * Read PT_INTERP from 32-bit ELF file.
+ * Stores interpreter path in ctx->hashbang.
+ * Returns 0 on success, -1 on error or if no PT_INTERP found.
+ */
+static int exec_read_elf32_interp(exec_ctx_t *ctx, int fd, const unsigned char *header)
+{
+    Elf32_Ehdr *ehdr = (Elf32_Ehdr *)header;
+    Elf32_Phdr phdr;
+    int i;
+
+    /* Iterate program headers looking for PT_INTERP */
+    for (i = 0; i < ehdr->e_phnum; i++) {
+        off_t phdr_offset = ehdr->e_phoff + (i * ehdr->e_phentsize);
+
+        if (lseek(fd, phdr_offset, SEEK_SET) == (off_t)-1) {
+            return -1;
+        }
+
+        if (read(fd, &phdr, sizeof(phdr)) != sizeof(phdr)) {
+            return -1;
+        }
+
+        if (phdr.p_type == PT_INTERP) {
+            /* Validate size */
+            if (phdr.p_filesz == 0 || phdr.p_filesz >= FAKECHROOT_PATH_MAX) {
+                return -1;
+            }
+
+            if (lseek(fd, phdr.p_offset, SEEK_SET) == (off_t)-1) {
+                return -1;
+            }
+
+            /* Read interpreter path into hashbang buffer */
+            ssize_t n = read(fd, ctx->hashbang, phdr.p_filesz);
+            if (n != (ssize_t)phdr.p_filesz) {
+                return -1;
+            }
+            ctx->hashbang[phdr.p_filesz] = '\0';
+            return 0;
+        }
+    }
+
+    return -1;  /* No PT_INTERP found (static binary) */
+}
+
+
+/*
+ * Read PT_INTERP from ELF file (dispatches to 32/64-bit parser).
+ * Stores interpreter path in ctx->hashbang.
+ * Returns 0 on success, -1 on error or if not ELF/no PT_INTERP.
+ */
+static int exec_read_elf_interp(exec_ctx_t *ctx, int fd, const unsigned char *header)
+{
+    /* Check ELF magic: 0x7f 'E' 'L' 'F' */
+    if (header[0] != 0x7f || header[1] != 'E' ||
+        header[2] != 'L' || header[3] != 'F') {
+        return -1;  /* Not ELF */
+    }
+
+    /* Dispatch to 32/64-bit parser based on EI_CLASS */
+    if (header[EI_CLASS] == ELFCLASS64) {
+        return exec_read_elf64_interp(ctx, fd, header);
+    } else {
+        return exec_read_elf32_interp(ctx, fd, header);
+    }
+}
+
+
+/*
+ * Check if interpreter path allows direct execution (no ld.so wrapper needed).
+ * Returns 1 if direct execution is allowed, 0 otherwise.
+ */
+static int is_direct_exec_interp(const char *interp)
+{
+    /* Android glibc's ld.so (patched nix binaries) */
+    if (strcmp(interp, ANDROID_ELFLOADER) == 0) {
+        return 1;
+    }
+
+    /* Android Bionic linker (native Android binaries) */
+    if (strcmp(interp, "/system/bin/linker64") == 0 ||
+        strcmp(interp, "/system/bin/linker") == 0) {
+        return 1;
+    }
+
     return 0;
 }
 
@@ -157,6 +295,7 @@ exec_ctx_t exec_prepare(const char *filename, char * const argv[])
 
 /*
  * Read file header to detect hashbang scripts vs ELF binaries.
+ * For ELF files, also reads PT_INTERP to determine if direct execution is possible.
  */
 static int exec_read_header(exec_ctx_t *ctx)
 {
@@ -170,9 +309,8 @@ static int exec_read_header(exec_ctx_t *ctx)
     }
 
     i = read(file, ctx->hashbang, FAKECHROOT_PATH_MAX - 2);
-    close(file);
-
     if (i == -1) {
+        close(file);
         __set_errno(ENOENT);
         return -1;
     }
@@ -183,8 +321,26 @@ static int exec_read_header(exec_ctx_t *ctx)
     /* Check for hashbang */
     if (ctx->hashbang[0] == '#' && ctx->hashbang[1] == '!') {
         ctx->type = EXEC_TYPE_SCRIPT;
+        close(file);
+        return 0;
     }
 
+    /* Try to read PT_INTERP from ELF to check for direct execution */
+    if (exec_read_elf_interp(ctx, file, (unsigned char *)ctx->hashbang) == 0) {
+        if (is_direct_exec_interp(ctx->hashbang)) {
+            ctx->type = EXEC_TYPE_ELF_DIRECT;
+            debug("exec: ELF with direct-exec interpreter: %s", ctx->hashbang);
+        } else {
+            ctx->type = EXEC_TYPE_ELF;
+            debug("exec: ELF needs wrapper, PT_INTERP: %s", ctx->hashbang);
+        }
+    } else {
+        /* No PT_INTERP or read failed - use wrapper (safe fallback) */
+        ctx->type = EXEC_TYPE_ELF;
+        debug("exec: ELF without PT_INTERP or read error, using wrapper");
+    }
+
+    close(file);
     return 0;
 }
 
@@ -213,6 +369,23 @@ static void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const ar
     newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
     newargv[n++] = ctx->argv0;           /* program's argv[0] */
     newargv[n] = ctx->expandedFilename;               /* program path */
+}
+
+
+/*
+ * Build argument vector for direct ELF execution (no wrapper needed).
+ * Simply copies original argv unchanged.
+ */
+static void exec_build_direct_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
+{
+    unsigned int i;
+
+    (void)ctx;  /* unused, but kept for consistent API */
+
+    for (i = 0; argv[i] != NULL; i++) {
+        newargv[i] = argv[i];
+    }
+    newargv[i] = NULL;
 }
 
 
@@ -319,10 +492,17 @@ int exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
         return -1;
     }
 
-    if (ctx->type == EXEC_TYPE_SCRIPT) {
-        exec_build_script_argv(ctx, newargv, argv);
-    } else {
-        exec_build_elf_argv(ctx, newargv, argv);
+    switch (ctx->type) {
+        case EXEC_TYPE_SCRIPT:
+            exec_build_script_argv(ctx, newargv, argv);
+            break;
+        case EXEC_TYPE_ELF_DIRECT:
+            exec_build_direct_argv(ctx, newargv, argv);
+            break;
+        case EXEC_TYPE_ELF:
+        default:
+            exec_build_elf_argv(ctx, newargv, argv);
+            break;
     }
 
     return 0;
@@ -334,10 +514,13 @@ int exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
  */
 const char *exec_get_path(exec_ctx_t *ctx)
 {
-    if (ctx->type == EXEC_TYPE_LDSO) {
-        return ctx->expandedFilename;
+    switch (ctx->type) {
+        case EXEC_TYPE_LDSO:
+        case EXEC_TYPE_ELF_DIRECT:
+            return ctx->expandedFilename;
+        default:
+            return ANDROID_ELFLOADER;
     }
-    return ANDROID_ELFLOADER;
 }
 
 
@@ -376,8 +559,13 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
         return -1;
     }
 
-    debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
-          exec_get_path(&ctx), newargv[0], newargv[1], newargv[2], newargv[3]);
+    if (ctx.type == EXEC_TYPE_ELF_DIRECT) {
+        debug("nextcall(execve)(\"%s\", {\"%s\", ...}, ...) [direct]",
+              exec_get_path(&ctx), newargv[0]);
+    } else {
+        debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
+              exec_get_path(&ctx), newargv[0], newargv[1], newargv[2], newargv[3]);
+    }
 
     return nextcall(execve)(exec_get_path(&ctx), newargv, newenvp);
 }
