@@ -355,9 +355,9 @@ static int exec_read_header(exec_ctx_t *ctx)
             debug("exec: ELF needs wrapper, PT_INTERP: %s", ctx->hashbang);
         }
     } else if (result == 0) {
-        /* Valid ELF but no PT_INTERP = static binary */
-        ctx->type = EXEC_TYPE_ELF_DIRECT;
-        debug("exec: static ELF binary, direct execution");
+        /* Valid ELF but no PT_INTERP = static binary, needs wrapper for sigaction setup */
+        ctx->type = EXEC_TYPE_ELF;
+        debug("exec: static ELF binary, using wrapper for sigaction setup");
     } else {
         /* Not ELF or read error - use wrapper (safe fallback) */
         ctx->type = EXEC_TYPE_ELF;
