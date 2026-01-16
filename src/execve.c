@@ -57,7 +57,11 @@ static int is_dynamic_linker(const char *filename)
 /*
  * Read PT_INTERP from 64-bit ELF file.
  * Stores interpreter path in ctx->hashbang.
- * Returns 0 on success, -1 on error or if no PT_INTERP found.
+ *
+ * Returns:
+ *   1  = PT_INTERP found and stored
+ *   0  = Valid ELF but no PT_INTERP (static binary)
+ *  -1  = Read error
  */
 static int exec_read_elf64_interp(exec_ctx_t *ctx, int fd, const unsigned char *header)
 {
@@ -93,18 +97,22 @@ static int exec_read_elf64_interp(exec_ctx_t *ctx, int fd, const unsigned char *
                 return -1;
             }
             ctx->hashbang[phdr.p_filesz] = '\0';
-            return 0;
+            return 1;  /* PT_INTERP found */
         }
     }
 
-    return -1;  /* No PT_INTERP found (static binary) */
+    return 0;  /* No PT_INTERP = static binary */
 }
 
 
 /*
  * Read PT_INTERP from 32-bit ELF file.
  * Stores interpreter path in ctx->hashbang.
- * Returns 0 on success, -1 on error or if no PT_INTERP found.
+ *
+ * Returns:
+ *   1  = PT_INTERP found and stored
+ *   0  = Valid ELF but no PT_INTERP (static binary)
+ *  -1  = Read error
  */
 static int exec_read_elf32_interp(exec_ctx_t *ctx, int fd, const unsigned char *header)
 {
@@ -140,18 +148,22 @@ static int exec_read_elf32_interp(exec_ctx_t *ctx, int fd, const unsigned char *
                 return -1;
             }
             ctx->hashbang[phdr.p_filesz] = '\0';
-            return 0;
+            return 1;  /* PT_INTERP found */
         }
     }
 
-    return -1;  /* No PT_INTERP found (static binary) */
+    return 0;  /* No PT_INTERP = static binary */
 }
 
 
 /*
  * Read PT_INTERP from ELF file (dispatches to 32/64-bit parser).
  * Stores interpreter path in ctx->hashbang.
- * Returns 0 on success, -1 on error or if not ELF/no PT_INTERP.
+ *
+ * Returns:
+ *   1  = PT_INTERP found and stored in ctx->hashbang
+ *   0  = Valid ELF but no PT_INTERP (static binary)
+ *  -1  = Not ELF or read error
  */
 static int exec_read_elf_interp(exec_ctx_t *ctx, int fd, const unsigned char *header)
 {
@@ -176,8 +188,13 @@ static int exec_read_elf_interp(exec_ctx_t *ctx, int fd, const unsigned char *he
  */
 static int is_direct_exec_interp(const char *interp)
 {
-    /* Android glibc's ld.so (patched nix binaries) */
+    /* Android glibc's ld.so */
     if (strcmp(interp, ANDROID_ELFLOADER) == 0) {
+        return 1;
+    }
+
+    /* nix-ld shim path (patched nix binaries) */
+    if (strcmp(interp, "/data/data/com.termux.nix/files/usr/lib/ld-linux-aarch64.so.1") == 0) {
         return 1;
     }
 
@@ -325,8 +342,11 @@ static int exec_read_header(exec_ctx_t *ctx)
         return 0;
     }
 
-    /* Try to read PT_INTERP from ELF to check for direct execution */
-    if (exec_read_elf_interp(ctx, file, (unsigned char *)ctx->hashbang) == 0) {
+    /* Try to read PT_INTERP from ELF to determine execution type */
+    int result = exec_read_elf_interp(ctx, file, (unsigned char *)ctx->hashbang);
+
+    if (result == 1) {
+        /* PT_INTERP found - check if direct execution allowed */
         if (is_direct_exec_interp(ctx->hashbang)) {
             ctx->type = EXEC_TYPE_ELF_DIRECT;
             debug("exec: ELF with direct-exec interpreter: %s", ctx->hashbang);
@@ -334,10 +354,14 @@ static int exec_read_header(exec_ctx_t *ctx)
             ctx->type = EXEC_TYPE_ELF;
             debug("exec: ELF needs wrapper, PT_INTERP: %s", ctx->hashbang);
         }
+    } else if (result == 0) {
+        /* Valid ELF but no PT_INTERP = static binary */
+        ctx->type = EXEC_TYPE_ELF_DIRECT;
+        debug("exec: static ELF binary, direct execution");
     } else {
-        /* No PT_INTERP or read failed - use wrapper (safe fallback) */
+        /* Not ELF or read error - use wrapper (safe fallback) */
         ctx->type = EXEC_TYPE_ELF;
-        debug("exec: ELF without PT_INTERP or read error, using wrapper");
+        debug("exec: not ELF or read error, using wrapper");
     }
 
     close(file);
