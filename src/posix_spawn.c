@@ -37,7 +37,6 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
         char * const envp []))
 {
     exec_ctx_t ctx;
-    int status;
 
     debug("posix_spawn(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
 
@@ -47,13 +46,10 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
 
     /* If executing ld.so directly, don't wrap it */
     if (ctx.is_ld_so) {
-        status = nextcall(posix_spawn)(pid, ctx.tmp, file_actions, attrp, argv, ctx.newenvp);
-        exec_ctx_cleanup(&ctx);
-        return status;
+        return nextcall(posix_spawn)(pid, ctx.tmp, file_actions, attrp, argv, ctx.newenvp);
     }
 
     if (exec_read_header(&ctx) != 0) {
-        exec_ctx_cleanup(&ctx);
         return errno;
     }
 
@@ -66,11 +62,8 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
           exec_get_path(&ctx), ctx.newargv[0], ctx.newargv[1], ctx.newargv[2], ctx.newargv[3]);
 
-    status = nextcall(posix_spawn)(pid, exec_get_path(&ctx), file_actions, attrp,
-                                   (char * const *)ctx.newargv, ctx.newenvp);
-
-    exec_ctx_cleanup(&ctx);
-    return status;
+    return nextcall(posix_spawn)(pid, exec_get_path(&ctx), file_actions, attrp,
+                                 (char * const *)ctx.newargv, ctx.newenvp);
 }
 
 #endif

@@ -48,7 +48,6 @@ typedef struct {
     /* Prepared environment and arguments - statically allocated */
     char *newenvp[EXEC_MAX_ENVP];
     const char *newargv[EXEC_MAX_ARGV];
-    unsigned int newenvp_alloced;  /* Number of env strings we allocated (for cleanup) */
 
     /* Execution flags */
     int is_script;      /* 1 if hashbang script, 0 if ELF binary */
@@ -105,13 +104,5 @@ void exec_build_script_argv(exec_ctx_t *ctx, char * const argv[]);
  * @return ANDROID_ELFLOADER for wrapped execution, or ctx->tmp for direct ld.so
  */
 const char *exec_get_path(exec_ctx_t *ctx);
-
-/*
- * Free resources allocated in the execution context.
- * Only needed on error paths - on exec success the process is replaced.
- *
- * @param ctx  Execution context
- */
-void exec_ctx_cleanup(exec_ctx_t *ctx);
 
 #endif /* EXECVE_H */

@@ -80,7 +80,6 @@ int exec_prepare(exec_ctx_t *ctx, const char *filename,
 
     /* Prepare environment: preserve required vars + copy original envp */
     envpos = 0;
-    ctx->newenvp_alloced = 0;
 
     for (j = 0; j < preserve_env_list_count && envpos < EXEC_MAX_ENVP - 1; j++) {
         key = preserve_env_list[j];
@@ -106,7 +105,6 @@ int exec_prepare(exec_ctx_t *ctx, const char *filename,
                 strcat(ctx->newenvp[envpos], "=");
                 strcat(ctx->newenvp[envpos], env);
                 envpos++;
-                ctx->newenvp_alloced++;
             }
         skip_preserve:;
         }
@@ -288,26 +286,11 @@ const char *exec_get_path(exec_ctx_t *ctx)
 
 
 /*
- * Free resources allocated in the execution context.
- * Only frees the env strings we allocated for preserved variables.
- */
-void exec_ctx_cleanup(exec_ctx_t *ctx)
-{
-    unsigned int i;
-    for (i = 0; i < ctx->newenvp_alloced; i++) {
-        free(ctx->newenvp[i]);
-    }
-    ctx->newenvp_alloced = 0;
-}
-
-
-/*
  * execve wrapper - uses shared exec_* functions
  */
 wrapper(execve, int, (const char * filename, char * const argv [], char * const envp []))
 {
     exec_ctx_t ctx;
-    int status;
 
     debug("execve(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
 
@@ -317,13 +300,10 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
 
     /* If executing ld.so directly, don't wrap it */
     if (ctx.is_ld_so) {
-        status = nextcall(execve)(ctx.tmp, argv, ctx.newenvp);
-        exec_ctx_cleanup(&ctx);
-        return status;
+        return nextcall(execve)(ctx.tmp, argv, ctx.newenvp);
     }
 
     if (exec_read_header(&ctx) != 0) {
-        exec_ctx_cleanup(&ctx);
         return -1;
     }
 
@@ -336,8 +316,5 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
           exec_get_path(&ctx), ctx.newargv[0], ctx.newargv[1], ctx.newargv[2], ctx.newargv[3]);
 
-    status = nextcall(execve)(exec_get_path(&ctx), (char * const *)ctx.newargv, ctx.newenvp);
-
-    exec_ctx_cleanup(&ctx);
-    return status;
+    return nextcall(execve)(exec_get_path(&ctx), (char * const *)ctx.newargv, ctx.newenvp);
 }
