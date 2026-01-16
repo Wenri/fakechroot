@@ -54,27 +54,26 @@ static int is_dynamic_linker(const char *filename)
 
 
 /*
- * Process preserved environment variables.
+ * Build environment array with preserved variables.
  * If newenvp/envbuf are NULL, just calculate required buffer size.
- * If newenvp/envbuf are non-NULL, copy strings and populate newenvp.
+ * If newenvp/envbuf are non-NULL, build complete environment array.
  *
- * @param envp       Original environment (to check for duplicates)
+ * @param envp       Original environment
  * @param newenvp    Environment array to populate (NULL for size calc only)
  * @param envbuf     Buffer for env strings (NULL for size calc only)
- * @param envpos_ptr Pointer to envpos counter (updated if non-NULL)
  * @return Buffer size needed/used (minimum 1 for empty VLA)
  */
-size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf,
-                         unsigned int *envpos_ptr)
+size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf)
 {
     size_t total = 0;
     char *bufptr = envbuf;
-    unsigned int j, envpos = envpos_ptr ? *envpos_ptr : 0;
+    unsigned int j, envpos = 0;
     char *key, *env;
     char **ep;
     char tmpkey[1024], *tp;
     int skip;
 
+    /* Add preserved vars not already in envp */
     for (j = 0; j < preserve_env_list_count; j++) {
         key = preserve_env_list[j];
         env = getenv(key);
@@ -97,7 +96,7 @@ size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf,
             if (!skip) {
                 size_t len = strlen(key) + strlen(env) + 2;
                 total += len;
-                if (envbuf) {
+                if (newenvp) {
                     newenvp[envpos] = bufptr;
                     strcpy(bufptr, key);
                     strcat(bufptr, "=");
@@ -109,7 +108,16 @@ size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf,
         }
     }
 
-    if (envpos_ptr) *envpos_ptr = envpos;
+    /* Append original envp */
+    if (newenvp) {
+        if (envp) {
+            for (ep = (char **)envp; *ep != NULL; ++ep) {
+                newenvp[envpos++] = *ep;
+            }
+        }
+        newenvp[envpos] = NULL;
+    }
+
     return total > 0 ? total : 1;  /* At least 1 byte for empty VLA */
 }
 
@@ -125,9 +133,6 @@ int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
     char *fakechroot_abspath = ctx->fakechroot_abspath;
     char *fakechroot_buf = ctx->fakechroot_buf;
 
-    char **ep;
-    unsigned int envpos;
-
     /* Initialize context */
     memset(ctx, 0, sizeof(*ctx));
     ctx->newargv = newargv;
@@ -140,17 +145,8 @@ int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
         ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
     }
 
-    /* Prepare environment: preserve required vars + copy original envp */
-    envpos = 0;
-    exec_preserve_env(envp, ctx->newenvp, envbuf, &envpos);
-
-    /* Append original envp */
-    if (envp) {
-        for (ep = (char **)envp; *ep != NULL; ++ep) {
-            ctx->newenvp[envpos++] = *ep;
-        }
-    }
-    ctx->newenvp[envpos] = NULL;
+    /* Build environment: preserved vars + original envp */
+    exec_preserve_env(envp, ctx->newenvp, envbuf);
 
     /* Expand filename path */
     expand_chroot_path(filename);
@@ -330,7 +326,7 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     /* VLAs for exact-size allocation */
     const char *newargv[argc + EXEC_EXTRA_ARGV + 1];
     char *newenvp[envc + preserve_env_list_count + 1];
-    size_t envbuf_size = exec_preserve_env(envp, NULL, NULL, NULL);
+    size_t envbuf_size = exec_preserve_env(envp, NULL, NULL);
     char envbuf[envbuf_size];
 
     if (exec_prepare(&ctx, newargv, newenvp, envbuf, filename, argv, envp) != 0) {
