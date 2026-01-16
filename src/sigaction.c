@@ -34,80 +34,135 @@
 #endif
 
 /*
- * Syscalls blocked by Android seccomp that should return ENOSYS.
+ * Android seccomp blocked syscalls - tested on kernel 5.10.43 aarch64
  *
- * Android's seccomp uses two blocking modes:
- * - SECCOMP_RET_ERRNO: Returns ENOSYS directly (kernel handles it)
- * - SECCOMP_RET_TRAP: Sends SIGSYS (we handle it here)
+ * Android's seccomp uses SECCOMP_RET_TRAP (sends SIGSYS) as the default
+ * action for most blocked syscalls (~200+). Only a small set of syscalls
+ * return ENOSYS directly via SECCOMP_RET_ERRNO.
  *
- * We include both types for safety - if kernel returns ENOSYS directly,
- * our handler won't be called. This also covers potential future changes
- * in Android's seccomp configuration.
+ * Programs that bypass glibc (Go, Rust with direct syscalls) hit the kernel
+ * seccomp filter directly and receive SIGSYS. Our handler catches these and
+ * returns ENOSYS so programs can use fallback implementations.
  *
- * List matches glibc's Termux patches (fakesyscall.json) plus syscalls
- * that trigger SIGSYS on Android kernel 5.10.43.
+ * Full list of SIGSYS-blocked syscalls by category:
+ *
+ *   Filesystem (18, 40, 51, 58):
+ *     lookup_dcookie, mount, chroot, vhangup
+ *
+ *   IPC - POSIX MQ (180-185):
+ *     mq_open, mq_unlink, mq_timedsend, mq_timedreceive, mq_notify, mq_getsetattr
+ *
+ *   IPC - SysV Semaphores (190-193):
+ *     semget, semctl, semtimedop, semop
+ *
+ *   IPC - SysV Messages (186-189):
+ *     msgget, msgctl, msgrcv, msgsnd
+ *
+ *   IPC - SysV Shared Memory (194-197):
+ *     shmget, shmctl, shmat, shmdt
+ *
+ *   Process/Thread (99-100, 116, 272, 293, 435):
+ *     set_robust_list, get_robust_list, ptrace, kcmp, rseq, clone3
+ *
+ *   Memory - NUMA (235-239):
+ *     mbind, get_mempolicy, set_mempolicy, migrate_pages, move_pages
+ *
+ *   Memory - Protection Keys (288-290):
+ *     pkey_mprotect, pkey_alloc, pkey_free
+ *
+ *   Security - Keyring (217-219):
+ *     add_key, request_key, keyctl
+ *
+ *   Security - Sandboxing (280, 444-446):
+ *     bpf, landlock_create_ruleset, landlock_add_rule, landlock_restrict_self
+ *
+ *   File Notification (262-263):
+ *     fanotify_init, fanotify_mark
+ *
+ *   File Handles (264-265):
+ *     name_to_handle_at, open_by_handle_at
+ *
+ *   Async I/O (292, 425-427):
+ *     io_pgetevents, io_uring_setup, io_uring_enter, io_uring_register
+ *
+ *   Modules (245-246, 273):
+ *     init_module, delete_module, finit_module
+ *
+ *   Newer syscalls (294-459, most blocked):
+ *     Including: openat2(437), faccessat2(439), close_range(436),
+ *     epoll_pwait2(441), mount_setattr(442), futex_waitv(449),
+ *     process_madvise(447), process_mrelease(448), pidfd_*(420-423), etc.
+ *
+ * Note: We only check specific syscalls here rather than returning ENOSYS
+ * for all SIGSYS signals, to avoid interfering with legitimate SIGSYS uses.
  */
 static int is_blocked_syscall(int syscall_nr)
 {
     switch (syscall_nr) {
-    /*
-     * Syscalls that trigger SIGSYS (SECCOMP_RET_TRAP) on Android 5.10.43:
-     */
-    case SYS_bpf:
-    case SYS_pkey_mprotect:
-    case SYS_pkey_alloc:
-    case SYS_pkey_free:
-    case SYS_io_pgetevents:
-    case SYS_openat2:
-    case SYS_epoll_pwait2:
-    case SYS_mount_setattr:
-    case SYS_process_mrelease:
-    /*
-     * Syscalls that return ENOSYS directly (SECCOMP_RET_ERRNO) but included
-     * for completeness and future-proofing (matches glibc Termux patches):
-     */
-    /* Process/thread */
-    case SYS_clone3:
-    case SYS_rseq:
-    case SYS_set_robust_list:
-    case SYS_get_robust_list:
-    /* Futex */
-    case SYS_futex_waitv:
-    /* Landlock */
-    case SYS_landlock_create_ruleset:
-    case SYS_landlock_add_rule:
-    case SYS_landlock_restrict_self:
-    /* pidfd */
-    case SYS_pidfd_send_signal:
-    /* io_uring */
-    case SYS_io_uring_setup:
-    case SYS_io_uring_enter:
-    case SYS_io_uring_register:
-    /* File handles */
-    case SYS_name_to_handle_at:
-    case SYS_open_by_handle_at:
-    /* Process */
-    case SYS_kcmp:
-    /* NUMA */
-    case SYS_mbind:
-    case SYS_get_mempolicy:
-    case SYS_set_mempolicy:
-    /* POSIX MQ */
+    /* Filesystem */
+    case SYS_mount:
+    case SYS_chroot:
+    /* IPC - POSIX MQ */
     case SYS_mq_open:
-    /* SysV semaphores */
+    /* IPC - SysV Semaphores */
     case SYS_semget:
     case SYS_semctl:
     case SYS_semop:
     case SYS_semtimedop:
-    /* SysV message queues */
+    /* IPC - SysV Messages */
     case SYS_msgctl:
     case SYS_msgget:
     case SYS_msgrcv:
     case SYS_msgsnd:
-    /* File access */
+    /* Process/Thread */
+    case SYS_set_robust_list:
+    case SYS_get_robust_list:
+    case SYS_ptrace:
+    case SYS_kcmp:
+    case SYS_rseq:
+    case SYS_clone3:
+    /* Memory - NUMA */
+    case SYS_mbind:
+    case SYS_get_mempolicy:
+    case SYS_set_mempolicy:
+    /* Memory - Protection Keys */
+    case SYS_pkey_mprotect:
+    case SYS_pkey_alloc:
+    case SYS_pkey_free:
+    /* Security - Keyring */
+    case SYS_add_key:
+    case SYS_request_key:
+    case SYS_keyctl:
+    /* Security - Sandboxing */
+    case SYS_bpf:
+    case SYS_landlock_create_ruleset:
+    case SYS_landlock_add_rule:
+    case SYS_landlock_restrict_self:
+    /* File Notification */
+    case SYS_fanotify_init:
+    case SYS_fanotify_mark:
+    /* File Handles */
+    case SYS_name_to_handle_at:
+    case SYS_open_by_handle_at:
+    /* Async I/O */
+    case SYS_io_pgetevents:
+    case SYS_io_uring_setup:
+    case SYS_io_uring_enter:
+    case SYS_io_uring_register:
+    /* Modules */
+    case SYS_init_module:
+    case SYS_delete_module:
+    case SYS_finit_module:
+    /* Newer syscalls - commonly used by Go/Rust */
+    case SYS_openat2:
     case SYS_faccessat2:
-    /* Close range */
     case SYS_close_range:
+    case SYS_epoll_pwait2:
+    case SYS_mount_setattr:
+    case SYS_futex_waitv:
+    case SYS_process_madvise:
+    case SYS_process_mrelease:
+    case SYS_pidfd_send_signal:
         return 1;
     default:
         return 0;
