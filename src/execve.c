@@ -54,10 +54,31 @@ static int is_dynamic_linker(const char *filename)
 
 
 /*
+ * Calculate size needed for preserved environment variable strings.
+ */
+size_t exec_envbuf_size(void)
+{
+    size_t total = 0;
+    unsigned int j;
+    char *key, *env;
+
+    for (j = 0; j < preserve_env_list_count; j++) {
+        key = preserve_env_list[j];
+        env = getenv(key);
+        if (env != NULL && *env) {
+            total += strlen(key) + strlen(env) + 2;  /* key=value\0 */
+        }
+    }
+    return total > 0 ? total : 1;  /* At least 1 byte for empty VLA */
+}
+
+
+/*
  * Prepare execution context: initialize, copy environment, expand filename.
  */
 int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
-                 const char *filename, char * const argv[], char * const envp[])
+                 char *envbuf, const char *filename,
+                 char * const argv[], char * const envp[])
 {
     /* These local refs are needed for expand_chroot_path macro */
     char *fakechroot_abspath = ctx->fakechroot_abspath;
@@ -66,6 +87,7 @@ int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
     char **ep;
     char *key, *env;
     char tmpkey[1024], *tp;
+    char *bufptr = envbuf;
     unsigned int j, envpos;
 
     /* Initialize context */
@@ -100,14 +122,13 @@ int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
                     }
                 }
             }
-            /* Allocate and add preserved var */
-            ctx->newenvp[envpos] = malloc(strlen(key) + strlen(env) + 2);
-            if (ctx->newenvp[envpos]) {
-                strcpy(ctx->newenvp[envpos], key);
-                strcat(ctx->newenvp[envpos], "=");
-                strcat(ctx->newenvp[envpos], env);
-                envpos++;
-            }
+            /* Copy preserved var into VLA buffer */
+            ctx->newenvp[envpos] = bufptr;
+            strcpy(bufptr, key);
+            strcat(bufptr, "=");
+            strcat(bufptr, env);
+            bufptr += strlen(bufptr) + 1;
+            envpos++;
         skip_preserve:;
         }
     }
@@ -298,8 +319,10 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     /* VLAs for exact-size allocation */
     const char *newargv[argc + EXEC_EXTRA_ARGV + 1];
     char *newenvp[envc + preserve_env_list_count + 1];
+    size_t envbuf_size = exec_envbuf_size();
+    char envbuf[envbuf_size];
 
-    if (exec_prepare(&ctx, newargv, newenvp, filename, argv, envp) != 0) {
+    if (exec_prepare(&ctx, newargv, newenvp, envbuf, filename, argv, envp) != 0) {
         return -1;
     }
 

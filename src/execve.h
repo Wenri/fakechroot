@@ -62,13 +62,23 @@ typedef struct {
  * @param ctx       Context to initialize
  * @param newargv   VLA for arguments (allocated by caller)
  * @param newenvp   VLA for environment (allocated by caller)
+ * @param envbuf    VLA buffer for preserved env strings (allocated by caller)
  * @param filename  Original filename (will be expanded)
  * @param argv      Original argument vector (argv[0] is preserved)
  * @param envp      Original environment
  * @return 0 on success, -1 on error (errno set)
  */
 int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
-                 const char *filename, char * const argv[], char * const envp[]);
+                 char *envbuf, const char *filename,
+                 char * const argv[], char * const envp[]);
+
+/*
+ * Calculate size needed for preserved environment variable strings.
+ * Used to allocate VLA buffer before calling exec_prepare.
+ *
+ * @return Total bytes needed for all preserved env strings
+ */
+size_t exec_envbuf_size(void);
 
 /*
  * Read file header to detect hashbang scripts vs ELF binaries.
