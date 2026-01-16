@@ -56,8 +56,8 @@ static int is_dynamic_linker(const char *filename)
 /*
  * Prepare execution context: initialize, copy environment, expand filename.
  */
-int exec_prepare(exec_ctx_t *ctx, const char *filename,
-                 char * const argv[], char * const envp[])
+int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
+                 const char *filename, char * const argv[], char * const envp[])
 {
     /* These local refs are needed for expand_chroot_path macro */
     char *fakechroot_abspath = ctx->fakechroot_abspath;
@@ -70,6 +70,8 @@ int exec_prepare(exec_ctx_t *ctx, const char *filename,
 
     /* Initialize context */
     memset(ctx, 0, sizeof(*ctx));
+    ctx->newargv = newargv;
+    ctx->newenvp = newenvp;
 
     /* Preserve original argv[0] for --argv0 option.
      * This is important for login shells where argv[0] is "-zsh" or "-bash" */
@@ -81,7 +83,7 @@ int exec_prepare(exec_ctx_t *ctx, const char *filename,
     /* Prepare environment: preserve required vars + copy original envp */
     envpos = 0;
 
-    for (j = 0; j < preserve_env_list_count && envpos < EXEC_MAX_ENVP - 1; j++) {
+    for (j = 0; j < preserve_env_list_count; j++) {
         key = preserve_env_list[j];
         env = getenv(key);
         if (env != NULL && *env) {
@@ -112,7 +114,7 @@ int exec_prepare(exec_ctx_t *ctx, const char *filename,
 
     /* Append original envp */
     if (envp) {
-        for (ep = (char **)envp; *ep != NULL && envpos < EXEC_MAX_ENVP - 1; ++ep) {
+        for (ep = (char **)envp; *ep != NULL; ++ep) {
             ctx->newenvp[envpos++] = *ep;
         }
     }
@@ -176,10 +178,9 @@ int exec_read_header(exec_ctx_t *ctx)
 void exec_build_elf_argv(exec_ctx_t *ctx, char * const argv[])
 {
     unsigned int i, n;
-    int extra_args = 1 + 2 + 1;  /* argv0 + --argv0 <name> + filename */
 
     /* Copy user arguments (skip original argv[0], it's passed via --argv0) */
-    for (i = 1, n = extra_args; argv[i] != NULL && n < EXEC_MAX_ARGV - 1; ) {
+    for (i = 1, n = EXEC_EXTRA_ARGV; argv[i] != NULL; ) {
         ctx->newargv[n++] = argv[i++];
     }
     ctx->newargv[n] = NULL;
@@ -207,7 +208,6 @@ void exec_build_script_argv(exec_ctx_t *ctx, char * const argv[])
 
     unsigned int i, j, n;
     char c;
-    int extra_args;
 
     /* Parse hashbang: skip "#!" and leading whitespace */
     for (i = j = 2; (ctx->hashbang[i] == ' ' || ctx->hashbang[i] == '\t') && i < FAKECHROOT_PATH_MAX; i++, j++)
@@ -244,19 +244,14 @@ void exec_build_script_argv(exec_ctx_t *ctx, char * const argv[])
     ctx->newargv[n++] = ctx->tmp;
 
     /* Add user arguments (skip argv[0]) */
-    for (i = 1; argv[i] != NULL && n < EXEC_MAX_ARGV - 1; ) {
+    for (i = 1; argv[i] != NULL; ) {
         ctx->newargv[n++] = argv[i++];
     }
     ctx->newargv[n] = NULL;
 
     /* Now shift everything to make room for elfloader args at the front.
      * Skip newargv[0] (interpreter from hashbang) since it's redundant with newfilename. */
-    extra_args = 1 + 2 + 1;  /* shebang_argv0 + --argv0 + shebang_argv0 + newfilename */
-    j = extra_args;
-
-    if (n >= EXEC_MAX_ARGV - j) {
-        n = EXEC_MAX_ARGV - j;
-    }
+    j = EXEC_EXTRA_ARGV;
 
     /* Shift elements from [1..n-1] to [j..j+n-2], iterate backwards */
     ctx->newargv[j + n - 1] = NULL;
@@ -286,15 +281,25 @@ const char *exec_get_path(exec_ctx_t *ctx)
 
 
 /*
- * execve wrapper - uses shared exec_* functions
+ * execve wrapper - uses shared exec_* functions with VLAs
  */
 wrapper(execve, int, (const char * filename, char * const argv [], char * const envp []))
 {
     exec_ctx_t ctx;
+    int argc, envc;
+    char **p;
 
     debug("execve(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
 
-    if (exec_prepare(&ctx, filename, argv, envp) != 0) {
+    /* Count arguments and environment variables */
+    for (argc = 0, p = (char **)argv; *p; p++) argc++;
+    for (envc = 0, p = (char **)envp; envp && *p; p++) envc++;
+
+    /* VLAs for exact-size allocation */
+    const char *newargv[argc + EXEC_EXTRA_ARGV + 1];
+    char *newenvp[envc + preserve_env_list_count + 1];
+
+    if (exec_prepare(&ctx, newargv, newenvp, filename, argv, envp) != 0) {
         return -1;
     }
 

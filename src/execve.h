@@ -22,16 +22,15 @@
 
 #include "libfakechroot.h"
 
-/* Maximum number of arguments and environment variables */
-#define EXEC_MAX_ARGV 1024
-#define EXEC_MAX_ENVP 512
+/* Extra argv slots needed for elfloader: argv0 + --argv0 + argv0 + filename */
+#define EXEC_EXTRA_ARGV 4
 
 /*
- * Execution context structure - holds all buffers and state for exec operations.
+ * Execution context structure - holds buffers and state for exec operations.
  * Used by both execve() and posix_spawn() to share common logic.
  *
- * All arrays are statically allocated to avoid malloc/free overhead.
- * Since exec replaces the process on success, stack usage doesn't matter.
+ * The newargv/newenvp arrays are VLAs allocated by the caller and passed
+ * as pointers here. This allows exact-size allocation on the stack.
  */
 typedef struct {
     /* Buffers required by expand_chroot_path macro */
@@ -45,9 +44,9 @@ typedef struct {
     char argv0[FAKECHROOT_PATH_MAX];          /* Original argv[0] (for --argv0) */
     char shebang_argv0[FAKECHROOT_PATH_MAX];  /* Shebang interpreter path for argv[0] */
 
-    /* Prepared environment and arguments - statically allocated */
-    char *newenvp[EXEC_MAX_ENVP];
-    const char *newargv[EXEC_MAX_ARGV];
+    /* Pointers to VLAs allocated by caller */
+    char **newenvp;
+    const char **newargv;
 
     /* Execution flags */
     int is_script;      /* 1 if hashbang script, 0 if ELF binary */
@@ -59,16 +58,17 @@ typedef struct {
 
 /*
  * Prepare execution context: initialize, copy environment, expand filename.
- * This combines initialization, environment preparation, and path expansion.
  *
  * @param ctx       Context to initialize
+ * @param newargv   VLA for arguments (allocated by caller)
+ * @param newenvp   VLA for environment (allocated by caller)
  * @param filename  Original filename (will be expanded)
  * @param argv      Original argument vector (argv[0] is preserved)
  * @param envp      Original environment
  * @return 0 on success, -1 on error (errno set)
  */
-int exec_prepare(exec_ctx_t *ctx, const char *filename,
-                 char * const argv[], char * const envp[]);
+int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
+                 const char *filename, char * const argv[], char * const envp[]);
 
 /*
  * Read file header to detect hashbang scripts vs ELF binaries.

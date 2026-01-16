@@ -29,7 +29,7 @@
 
 
 /*
- * posix_spawn wrapper - uses shared exec_* functions from execve.c
+ * posix_spawn wrapper - uses shared exec_* functions with VLAs
  */
 wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
         const posix_spawn_file_actions_t* file_actions,
@@ -37,10 +37,20 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
         char * const envp []))
 {
     exec_ctx_t ctx;
+    int argc, envc;
+    char **p;
 
     debug("posix_spawn(\"%s\", {\"%s\", ...}, {\"%s\", ...})", filename, argv[0], envp ? envp[0] : "(null)");
 
-    if (exec_prepare(&ctx, filename, argv, envp) != 0) {
+    /* Count arguments and environment variables */
+    for (argc = 0, p = (char **)argv; *p; p++) argc++;
+    for (envc = 0, p = (char **)envp; envp && *p; p++) envc++;
+
+    /* VLAs for exact-size allocation */
+    const char *newargv[argc + EXEC_EXTRA_ARGV + 1];
+    char *newenvp[envc + preserve_env_list_count + 1];
+
+    if (exec_prepare(&ctx, newargv, newenvp, filename, argv, envp) != 0) {
         return errno;
     }
 
