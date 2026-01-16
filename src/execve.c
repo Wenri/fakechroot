@@ -56,14 +56,14 @@ static int is_dynamic_linker(const char *filename)
 
 /*
  * Read PT_INTERP from 64-bit ELF file.
- * Stores interpreter path in ctx->hashbang.
+ * Stores interpreter path in interp_buf.
  *
  * Returns:
  *   1  = PT_INTERP found and stored
  *   0  = Valid ELF but no PT_INTERP (static binary)
  *  -1  = Read error
  */
-static int exec_read_elf64_interp(exec_ctx_t *ctx, int fd, const unsigned char *header)
+static int exec_read_elf64_interp(char *interp_buf, int fd, const unsigned char *header)
 {
     Elf64_Ehdr *ehdr = (Elf64_Ehdr *)header;
     Elf64_Phdr phdr;
@@ -91,12 +91,12 @@ static int exec_read_elf64_interp(exec_ctx_t *ctx, int fd, const unsigned char *
                 return -1;
             }
 
-            /* Read interpreter path into hashbang buffer */
-            ssize_t n = read(fd, ctx->hashbang, phdr.p_filesz);
+            /* Read interpreter path into buffer */
+            ssize_t n = read(fd, interp_buf, phdr.p_filesz);
             if (n != (ssize_t)phdr.p_filesz) {
                 return -1;
             }
-            ctx->hashbang[phdr.p_filesz] = '\0';
+            interp_buf[phdr.p_filesz] = '\0';
             return 1;  /* PT_INTERP found */
         }
     }
@@ -107,14 +107,14 @@ static int exec_read_elf64_interp(exec_ctx_t *ctx, int fd, const unsigned char *
 
 /*
  * Read PT_INTERP from 32-bit ELF file.
- * Stores interpreter path in ctx->hashbang.
+ * Stores interpreter path in interp_buf.
  *
  * Returns:
  *   1  = PT_INTERP found and stored
  *   0  = Valid ELF but no PT_INTERP (static binary)
  *  -1  = Read error
  */
-static int exec_read_elf32_interp(exec_ctx_t *ctx, int fd, const unsigned char *header)
+static int exec_read_elf32_interp(char *interp_buf, int fd, const unsigned char *header)
 {
     Elf32_Ehdr *ehdr = (Elf32_Ehdr *)header;
     Elf32_Phdr phdr;
@@ -142,12 +142,12 @@ static int exec_read_elf32_interp(exec_ctx_t *ctx, int fd, const unsigned char *
                 return -1;
             }
 
-            /* Read interpreter path into hashbang buffer */
-            ssize_t n = read(fd, ctx->hashbang, phdr.p_filesz);
+            /* Read interpreter path into buffer */
+            ssize_t n = read(fd, interp_buf, phdr.p_filesz);
             if (n != (ssize_t)phdr.p_filesz) {
                 return -1;
             }
-            ctx->hashbang[phdr.p_filesz] = '\0';
+            interp_buf[phdr.p_filesz] = '\0';
             return 1;  /* PT_INTERP found */
         }
     }
@@ -158,14 +158,14 @@ static int exec_read_elf32_interp(exec_ctx_t *ctx, int fd, const unsigned char *
 
 /*
  * Read PT_INTERP from ELF file (dispatches to 32/64-bit parser).
- * Stores interpreter path in ctx->hashbang.
+ * Stores interpreter path in interp_buf.
  *
  * Returns:
- *   1  = PT_INTERP found and stored in ctx->hashbang
+ *   1  = PT_INTERP found and stored in interp_buf
  *   0  = Valid ELF but no PT_INTERP (static binary)
  *  -1  = Not ELF or read error
  */
-static int exec_read_elf_interp(exec_ctx_t *ctx, int fd, const unsigned char *header)
+static int exec_read_elf_interp(char *interp_buf, int fd, const unsigned char *header)
 {
     /* Check ELF magic: 0x7f 'E' 'L' 'F' */
     if (header[0] != 0x7f || header[1] != 'E' ||
@@ -175,9 +175,9 @@ static int exec_read_elf_interp(exec_ctx_t *ctx, int fd, const unsigned char *he
 
     /* Dispatch to 32/64-bit parser based on EI_CLASS */
     if (header[EI_CLASS] == ELFCLASS64) {
-        return exec_read_elf64_interp(ctx, fd, header);
+        return exec_read_elf64_interp(interp_buf, fd, header);
     } else {
-        return exec_read_elf32_interp(ctx, fd, header);
+        return exec_read_elf32_interp(interp_buf, fd, header);
     }
 }
 
@@ -278,22 +278,18 @@ size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf)
 
 
 /*
- * Prepare execution context: initialize and expand filename.
+ * Prepare execution context: expand filename and detect file type.
+ * Reads file header to determine if it's ELF, script, or other.
+ * Returns context with type set; errno set on error.
  */
-exec_ctx_t exec_prepare(const char *filename, char * const argv[])
+exec_ctx_t exec_prepare(const char *filename)
 {
     exec_ctx_t ctx = {0};
+    int file, i;
 
-    /* Local buffers for expand_chroot_path macro */
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
-    char fakechroot_buf[FAKECHROOT_PATH_MAX];
-
-    /* Preserve original argv[0] for --argv0 option.
-     * This is important for login shells where argv[0] is "-zsh" or "-bash" */
-    if (argv && argv[0]) {
-        strncpy(ctx.argv0, argv[0], FAKECHROOT_PATH_MAX - 1);
-        ctx.argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
-    }
+    /* Reuse ctx buffers for expand_chroot_path macro (unused at this point) */
+    char *fakechroot_abspath = ctx.interpPath;
+    char *fakechroot_buf = ctx.hashbang;
 
     /* Expand filename path */
     expand_chroot_path(filename);
@@ -302,70 +298,59 @@ exec_ctx_t exec_prepare(const char *filename, char * const argv[])
 
     /* Check if executing dynamic linker directly */
     if (is_dynamic_linker(ctx.expandedFilename)) {
-        ctx.type = EXEC_TYPE_LDSO;
+        ctx.type = EXEC_TYPE_DIRECT_LDSO;
         debug("exec: executing dynamic linker directly, no wrapping: %s", ctx.expandedFilename);
+        return ctx;
     }
 
-    return ctx;
-}
-
-
-/*
- * Read file header to detect hashbang scripts vs ELF binaries.
- * For ELF files, also reads PT_INTERP to determine if direct execution is possible.
- */
-static int exec_read_header(exec_ctx_t *ctx)
-{
-    int file;
-    int i;
-
-    file = nextcall(open)(ctx->expandedFilename, O_RDONLY);
+    /* Read file header to detect type */
+    file = nextcall(open)(ctx.expandedFilename, O_RDONLY);
     if (file == -1) {
         __set_errno(ENOENT);
-        return -1;
+        return ctx;
     }
 
-    i = read(file, ctx->hashbang, FAKECHROOT_PATH_MAX - 2);
+    i = read(file, ctx.hashbang, FAKECHROOT_PATH_MAX - 2);
     if (i == -1) {
         close(file);
         __set_errno(ENOENT);
-        return -1;
+        return ctx;
     }
 
     /* Null-terminate the buffer */
-    ctx->hashbang[i] = ctx->hashbang[i + 1] = '\0';
+    ctx.hashbang[i] = ctx.hashbang[i + 1] = '\0';
 
     /* Check for hashbang */
-    if (ctx->hashbang[0] == '#' && ctx->hashbang[1] == '!') {
-        ctx->type = EXEC_TYPE_SCRIPT;
+    if (ctx.hashbang[0] == '#' && ctx.hashbang[1] == '!') {
+        ctx.type = EXEC_TYPE_ELFLOADER_SCRIPT;
         close(file);
-        return 0;
+        return ctx;
     }
 
     /* Try to read PT_INTERP from ELF to determine execution type */
-    int result = exec_read_elf_interp(ctx, file, (unsigned char *)ctx->hashbang);
+    int result = exec_read_elf_interp(ctx.hashbang, file, (unsigned char *)ctx.hashbang);
 
     if (result == 1) {
         /* PT_INTERP found - check if direct execution allowed */
-        if (is_direct_exec_interp(ctx->hashbang)) {
-            ctx->type = EXEC_TYPE_ELF_DIRECT;
-            debug("exec: ELF with direct-exec interpreter: %s", ctx->hashbang);
+        if (is_direct_exec_interp(ctx.hashbang)) {
+            ctx.type = EXEC_TYPE_DIRECT_ELF;
+            debug("exec: ELF with direct-exec interpreter: %s", ctx.hashbang);
         } else {
-            ctx->type = EXEC_TYPE_ELF;
-            debug("exec: ELF needs wrapper, PT_INTERP: %s", ctx->hashbang);
+            ctx.type = EXEC_TYPE_ELFLOADER_ELF;
+            debug("exec: ELF needs wrapper, PT_INTERP: %s", ctx.hashbang);
         }
     } else if (result == 0) {
         /* Valid ELF but no PT_INTERP = static binary, needs wrapper for sigaction setup */
-        ctx->type = EXEC_TYPE_ELF;
+        ctx.type = EXEC_TYPE_ELFLOADER_ELF;
         debug("exec: static ELF binary, using wrapper for sigaction setup");
     } else {
         /* Not ELF or read error - let kernel handle it directly */
-        ctx->type = EXEC_TYPE_ELF_DIRECT;
+        ctx.type = EXEC_TYPE_DIRECT_ELF;
         debug("exec: not ELF, direct execution (let kernel handle binfmt)");
     }
 
     close(file);
-    return 0;
+    return ctx;
 }
 
 
@@ -389,27 +374,10 @@ static void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const ar
 
     /* Set up elfloader arguments */
     n = 0;
-    newargv[n++] = ctx->argv0;           /* ld.so's argv[0]: command name for ps */
+    newargv[n++] = argv[0];              /* ld.so's argv[0]: command name for ps */
     newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
-    newargv[n++] = ctx->argv0;           /* program's argv[0] */
-    newargv[n] = ctx->expandedFilename;               /* program path */
-}
-
-
-/*
- * Build argument vector for direct ELF execution (no wrapper needed).
- * Simply copies original argv unchanged.
- */
-static void exec_build_direct_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
-{
-    unsigned int i;
-
-    (void)ctx;  /* unused, but kept for consistent API */
-
-    for (i = 0; argv[i] != NULL; i++) {
-        newargv[i] = argv[i];
-    }
-    newargv[i] = NULL;
+    newargv[n++] = argv[0];              /* program's argv[0] */
+    newargv[n] = ctx->expandedFilename;  /* program path */
 }
 
 
@@ -418,15 +386,16 @@ static void exec_build_direct_argv(exec_ctx_t *ctx, char **newargv, char * const
  * - Interpreter path (first token)
  * - Optional single argument (everything after first whitespace until newline)
  *
- * Stores expanded interpreter in ctx->argv0.
+ * Stores expanded interpreter in ctx->interpPath.
  * Returns pointer to original interpreter in hashbang (for display/argv0).
  * Sets *shebangArg to optional argument (or NULL).
  */
 static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
 {
-    /* Local buffers for expand_chroot_path macro */
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
-    char fakechroot_buf[FAKECHROOT_PATH_MAX];
+    /* Reuse ctx->interpPath for expand_chroot_path (it's the destination anyway)
+     * Use caller-provided buffer via shebangArg (before strtok_r modifies it) */
+    char *fakechroot_abspath = ctx->interpPath;
+    char *fakechroot_buf = *shebangArg;
 
     /* Null-terminate at first newline - we only care about shebang line */
     char *nl = strchr(ctx->hashbang, '\n');
@@ -441,11 +410,14 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
     }
     debug("exec: originalInterp=\"%s\" (from shebang)", originalInterp);
 
-    /* Expand interpreter path and store in ctx->argv0 */
+    /* Expand interpreter path - result may end up in fakechroot_abspath (ctx->interpPath) */
     const char *ptr = originalInterp;
     expand_chroot_path(ptr);
-    strncpy(ctx->argv0, ptr, FAKECHROOT_PATH_MAX - 1);
-    ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
+    /* Copy if result is not already in ctx->interpPath */
+    if (ptr != ctx->interpPath) {
+        strncpy(ctx->interpPath, ptr, FAKECHROOT_PATH_MAX - 1);
+    }
+    ctx->interpPath[FAKECHROOT_PATH_MAX - 1] = '\0';
 
     /* Skip leading whitespace in shebangArg */
     *shebangArg += strspn(*shebangArg, " \t");
@@ -464,86 +436,84 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
  * Build argument vector for script execution via elfloader.
  *
  * Final argv layout:
- *   [displayArgv0, --argv0, displayArgv0, expandedInterp, shebang_arg?, script_path, user_args..., NULL]
+ *   [displayArgv0, --argv0, displayArgv0, interpPath, shebang_arg?, script_path, user_args..., NULL]
  *
  * Where:
  *   - displayArgv0 = original interpreter from shebang (for ps/top and $^X)
- *   - expandedInterp = ctx->argv0 = expanded interpreter path (for ld.so to load)
+ *   - interpPath = ctx->interpPath = expanded interpreter path (for ld.so to load)
  *   - shebang_arg is optional (only if shebang has argument after interpreter)
  */
 static void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
 {
     unsigned int i, n;
-    char *shebangArg;
     char *displayArgv0;
+    int direct_exec = 0;
+    char interp_buf[FAKECHROOT_PATH_MAX];  /* Buffer for PT_INTERP / fakechroot_buf */
+    char *shebangArg = interp_buf;         /* Initially points to buffer for parse_shebang */
 
     /* Parse shebang line:
-     * - Stores expanded interpreter in ctx->argv0
+     * - Stores expanded interpreter in ctx->interpPath
      * - Returns original interpreter pointer (for display)
-     * - Sets shebangArg pointer (or NULL) */
+     * - Sets shebangArg pointer (or NULL)
+     * - Uses initial shebangArg value as fakechroot_buf */
     displayArgv0 = parse_shebang(ctx, &shebangArg);
 
-    /* Build argv directly in correct order */
-    n = 0;
-    newargv[n++] = displayArgv0;         /* ld.so's argv[0]: original for ps */
-    newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
-    newargv[n++] = displayArgv0;         /* interpreter's argv[0]: original for $^X */
-    newargv[n++] = ctx->argv0;           /* expanded interpreter (for ld.so to load) */
+    /* Check if interpreter can be executed directly (has direct-exec PT_INTERP) */
+    int fd = nextcall(open)(ctx->interpPath, O_RDONLY);
+    if (fd >= 0) {
+        unsigned char header[64];
+        if (read(fd, header, sizeof(header)) >= (ssize_t)sizeof(header)) {
+            /* Use separate buffer - displayArgv0/shebangArg point into ctx->hashbang */
+            int result = exec_read_elf_interp(interp_buf, fd, header);
+            if (result == 1 && is_direct_exec_interp(interp_buf)) {
+                direct_exec = 1;
+                debug("exec: script interpreter has direct-exec PT_INTERP: %s", interp_buf);
+            }
+        }
+        close(fd);
+    }
 
-    /* Add optional shebang argument (kernel passes only 1 arg) */
+    /* Build prefix based on execution type */
+    n = 0;
+    if (direct_exec) {
+        /* Direct: [interpreter, ...] */
+        newargv[n++] = ctx->interpPath;
+        ctx->type = EXEC_TYPE_DIRECT_SCRIPT;
+    } else {
+        /* Wrapped: [displayArgv0, --argv0, displayArgv0, interpreter, ...] */
+        newargv[n++] = displayArgv0;
+        newargv[n++] = ANDROID_ARGV0_OPT;
+        newargv[n++] = displayArgv0;
+        newargv[n++] = ctx->interpPath;
+    }
+
+    /* Common suffix: [shebang_arg?, script, user_args...] */
     if (shebangArg) {
         newargv[n++] = shebangArg;
     }
-
-    /* Add script path */
     newargv[n++] = ctx->expandedFilename;
-
-    /* Add user arguments (skip argv[0]) */
-    for (i = 1; argv[i] != NULL; ) {
-        newargv[n++] = argv[i++];
+    for (i = 1; argv[i] != NULL; i++) {
+        newargv[n++] = argv[i];
     }
     newargv[n] = NULL;
 }
 
 
 /*
- * Read file header and build argument vector for elfloader.
- * Dispatches to appropriate builder based on detected file type.
+ * Build argument vector for elfloader.
+ * Dispatches to appropriate builder based on file type (already detected in exec_prepare).
+ * Only called for types that need argv transformation.
  */
-int exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
+void exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
 {
-    if (exec_read_header(ctx) != 0) {
-        return -1;
-    }
-
     switch (ctx->type) {
-        case EXEC_TYPE_SCRIPT:
+        case EXEC_TYPE_ELFLOADER_SCRIPT:
             exec_build_script_argv(ctx, newargv, argv);
             break;
-        case EXEC_TYPE_ELF_DIRECT:
-            exec_build_direct_argv(ctx, newargv, argv);
-            break;
-        case EXEC_TYPE_ELF:
+        case EXEC_TYPE_ELFLOADER_ELF:
         default:
             exec_build_elf_argv(ctx, newargv, argv);
             break;
-    }
-
-    return 0;
-}
-
-
-/*
- * Get the executable path for the final exec call.
- */
-const char *exec_get_path(exec_ctx_t *ctx)
-{
-    switch (ctx->type) {
-        case EXEC_TYPE_LDSO:
-        case EXEC_TYPE_ELF_DIRECT:
-            return ctx->expandedFilename;
-        default:
-            return ANDROID_ELFLOADER;
     }
 }
 
@@ -562,34 +532,27 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     for (argc = 0, p = (char **)argv; *p; p++) argc++;
     for (envc = 0, p = (char **)envp; envp && *p; p++) envc++;
 
-    /* VLAs for exact-size allocation
-     * newargv max (script with shebang arg):
-     *   prefix(4) + shebang_arg(1) + script(1) + user_args(argc-1) + NULL(1) = argc + 6
-     * Expressed as: argc + EXEC_PREFIX_LEN(4) + MAX_SHEBANG_ARGS(1) + 1 (script path) */
-    char *newargv[argc + EXEC_PREFIX_LEN + MAX_SHEBANG_ARGS + 1];
+    /* VLAs for exact-size allocation */
     char *newenvp[envc + preserve_env_list_count + 1];
     char envbuf[exec_preserve_env(envp, NULL, NULL) + 1];
 
     /* Build environment and prepare context */
     exec_preserve_env(envp, newenvp, envbuf);
-    exec_ctx_t ctx = exec_prepare(filename, argv);
+    exec_ctx_t ctx = exec_prepare(filename);
 
-    /* If executing ld.so directly, don't wrap it */
-    if (ctx.type == EXEC_TYPE_LDSO) {
+    /* Direct execution types: use original argv, no transformation needed */
+    if (ctx.type == EXEC_TYPE_DIRECT_LDSO || ctx.type == EXEC_TYPE_DIRECT_ELF) {
+        debug("nextcall(execve)(\"%s\", {\"%s\", ...}, ...) [direct]",
+              ctx.expandedFilename, argv[0]);
         return nextcall(execve)(ctx.expandedFilename, argv, newenvp);
     }
 
-    if (exec_build_argv(&ctx, newargv, argv) != 0) {
-        return -1;
-    }
+    /* Wrapped execution: build new argv with elfloader prefix */
+    char *newargv[argc + EXEC_PREFIX_LEN + MAX_SHEBANG_ARGS + 1];
+    exec_build_argv(&ctx, newargv, argv);
 
-    if (ctx.type == EXEC_TYPE_ELF_DIRECT) {
-        debug("nextcall(execve)(\"%s\", {\"%s\", ...}, ...) [direct]",
-              exec_get_path(&ctx), newargv[0]);
-    } else {
-        debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
-              exec_get_path(&ctx), newargv[0], newargv[1], newargv[2], newargv[3]);
-    }
+    debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
+          exec_get_path(&ctx), newargv[0], newargv[1], newargv[2], newargv[3]);
 
     return nextcall(execve)(exec_get_path(&ctx), newargv, newenvp);
 }

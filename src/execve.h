@@ -36,10 +36,14 @@
 
 /* Execution type determined by file header */
 typedef enum {
-    EXEC_TYPE_ELF,          /* Regular ELF binary - needs ld.so wrapper */
-    EXEC_TYPE_ELF_DIRECT,   /* Already-patched ELF - execute directly */
-    EXEC_TYPE_SCRIPT,       /* Hashbang script (#!) */
-    EXEC_TYPE_LDSO          /* Dynamic linker (ld.so) - no wrapping needed */
+    /* Direct execution (no ld.so wrapper needed) */
+    EXEC_TYPE_DIRECT_ELF,       /* Already-patched ELF with direct-exec PT_INTERP */
+    EXEC_TYPE_DIRECT_LDSO,      /* Dynamic linker (ld.so) itself */
+    EXEC_TYPE_DIRECT_SCRIPT,    /* Script with direct-exec interpreter */
+
+    /* Elfloader wrapped execution (needs ld.so wrapper) */
+    EXEC_TYPE_ELFLOADER_ELF,    /* Regular ELF binary */
+    EXEC_TYPE_ELFLOADER_SCRIPT, /* Script with wrapped interpreter */
 } exec_type_t;
 
 /*
@@ -47,22 +51,21 @@ typedef enum {
  * Used by both execve() and posix_spawn() to share common logic.
  */
 typedef struct {
+    exec_type_t type;                           /* Execution type (first for easy init) */
     char hashbang[FAKECHROOT_PATH_MAX];         /* Script: shebang line (original interp)
                                                    ELF: PT_INTERP path (for direct exec check) */
     char expandedFilename[FAKECHROOT_PATH_MAX]; /* Expanded path to execute */
-    char argv0[FAKECHROOT_PATH_MAX];            /* ELF: original argv[0] (e.g., "-zsh")
-                                                   Script: expanded interpreter path */
-    exec_type_t type;   /* Execution type (ELF, ELF_DIRECT, script, or ld.so) */
+    char interpPath[FAKECHROOT_PATH_MAX];       /* Script only: expanded interpreter path */
 } exec_ctx_t;
 
 /*
- * Prepare execution context: initialize and expand filename.
+ * Prepare execution context: expand filename and detect file type.
+ * Reads file header to determine if it's ELF, script, or other.
  *
  * @param filename  Original filename (will be expanded)
- * @param argv      Original argument vector (argv[0] is preserved for --argv0)
- * @return Initialized execution context
+ * @return Initialized execution context with type set
  */
-exec_ctx_t exec_prepare(const char *filename, char * const argv[]);
+exec_ctx_t exec_prepare(const char *filename);
 
 /*
  * Build environment array with preserved variables.
@@ -78,23 +81,35 @@ exec_ctx_t exec_prepare(const char *filename, char * const argv[]);
 size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf);
 
 /*
- * Read file header and build argument vector for elfloader.
- * Dispatches to appropriate builder based on detected file type (ELF or script).
+ * Build argument vector for elfloader.
+ * Dispatches to appropriate builder based on file type (already detected in exec_prepare).
+ * Only called for types that need argv transformation (ELFLOADER_*).
  *
- * @param ctx      Execution context
+ * @param ctx      Execution context (type already set by exec_prepare)
  * @param newargv  Argument array to populate
  * @param argv     Original argument vector
- * @return 0 on success, -1 on error (errno set)
  */
-int exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]);
+void exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]);
 
 /*
  * Get the executable path for the final exec call.
  *
  * @param ctx  Execution context
  * @return ANDROID_ELFLOADER for wrapped execution,
- *         or ctx->expandedFilename for direct execution (ld.so, patched ELF)
+ *         ctx->expandedFilename for direct ELF/ld.so,
+ *         ctx->interpPath for direct script (expanded interpreter)
  */
-const char *exec_get_path(exec_ctx_t *ctx);
+static inline const char *exec_get_path(exec_ctx_t *ctx)
+{
+    switch (ctx->type) {
+        case EXEC_TYPE_DIRECT_LDSO:
+        case EXEC_TYPE_DIRECT_ELF:
+            return ctx->expandedFilename;
+        case EXEC_TYPE_DIRECT_SCRIPT:
+            return ctx->interpPath;
+        default:
+            return ANDROID_ELFLOADER;
+    }
+}
 
 #endif /* EXECVE_H */

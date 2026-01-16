@@ -45,26 +45,24 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     for (argc = 0, p = (char **)argv; *p; p++) argc++;
     for (envc = 0, p = (char **)envp; envp && *p; p++) envc++;
 
-    /* VLAs for exact-size allocation
-     * newargv max (script with shebang arg):
-     *   prefix(4) + shebang_arg(1) + script(1) + user_args(argc-1) + NULL(1) = argc + 6
-     * Expressed as: argc + EXEC_PREFIX_LEN(4) + MAX_SHEBANG_ARGS(1) + 1 (script path) */
-    char *newargv[argc + EXEC_PREFIX_LEN + MAX_SHEBANG_ARGS + 1];
+    /* VLAs for exact-size allocation */
     char *newenvp[envc + preserve_env_list_count + 1];
     char envbuf[exec_preserve_env(envp, NULL, NULL) + 1];
 
     /* Build environment and prepare context */
     exec_preserve_env(envp, newenvp, envbuf);
-    exec_ctx_t ctx = exec_prepare(filename, argv);
+    exec_ctx_t ctx = exec_prepare(filename);
 
-    /* If executing ld.so directly, don't wrap it */
-    if (ctx.type == EXEC_TYPE_LDSO) {
+    /* Direct execution types: use original argv, no transformation needed */
+    if (ctx.type == EXEC_TYPE_DIRECT_LDSO || ctx.type == EXEC_TYPE_DIRECT_ELF) {
+        debug("nextcall(posix_spawn)(\"%s\", {\"%s\", ...}, ...) [direct]",
+              ctx.expandedFilename, argv[0]);
         return nextcall(posix_spawn)(pid, ctx.expandedFilename, file_actions, attrp, argv, newenvp);
     }
 
-    if (exec_build_argv(&ctx, newargv, argv) != 0) {
-        return errno;
-    }
+    /* Wrapped execution: build new argv with elfloader prefix */
+    char *newargv[argc + EXEC_PREFIX_LEN + MAX_SHEBANG_ARGS + 1];
+    exec_build_argv(&ctx, newargv, argv);
 
     debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
           exec_get_path(&ctx), newargv[0], newargv[1], newargv[2], newargv[3]);
