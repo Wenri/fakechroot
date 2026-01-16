@@ -281,17 +281,44 @@ size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf)
  * Prepare execution context: expand filename and detect file type.
  * Reads file header to determine if it's ELF, script, or other.
  * Returns context with type set; errno set on error.
+ *
+ * Buffer Reuse Strategy:
+ * ----------------------
+ * The expand_chroot_path() macro requires two temporary buffers:
+ *   - fakechroot_abspath: for building absolute paths
+ *   - fakechroot_buf: for intermediate path manipulation
+ *
+ * Instead of allocating 2 * FAKECHROOT_PATH_MAX (~8KB) on the stack,
+ * we reuse ctx.interpPath and ctx.hashbang which are unused at this point:
+ *
+ *   Timeline of ctx buffer usage in exec_prepare():
+ *   ┌─────────────────────┬──────────────────┬─────────────────────┐
+ *   │ Phase               │ ctx.interpPath   │ ctx.hashbang        │
+ *   ├─────────────────────┼──────────────────┼─────────────────────┤
+ *   │ expand_chroot_path  │ fakechroot_abspath│ fakechroot_buf     │
+ *   │ After expand        │ (garbage)        │ (garbage)           │
+ *   │ read() file header  │ (garbage)        │ file header data    │
+ *   │ Return for scripts  │ (unused)         │ shebang line        │
+ *   │ Return for ELF      │ (unused)         │ PT_INTERP path      │
+ *   └─────────────────────┴──────────────────┴─────────────────────┘
+ *
+ * This saves ~8KB of stack space per exec call.
  */
 exec_ctx_t exec_prepare(const char *filename)
 {
     exec_ctx_t ctx = {0};
     int file, i;
 
-    /* Reuse ctx buffers for expand_chroot_path macro (unused at this point) */
+    /*
+     * Buffer reuse: ctx.interpPath and ctx.hashbang are unused until later.
+     * We use them as temporary buffers for the expand_chroot_path macro.
+     * After expansion, ctx.hashbang will be overwritten by file read().
+     * ctx.interpPath remains garbage until parse_shebang() (scripts only).
+     */
     char *fakechroot_abspath = ctx.interpPath;
     char *fakechroot_buf = ctx.hashbang;
 
-    /* Expand filename path */
+    /* Expand filename path (uses fakechroot_abspath/buf as temp buffers) */
     expand_chroot_path(filename);
     strncpy(ctx.expandedFilename, filename, FAKECHROOT_PATH_MAX - 1);
     ctx.expandedFilename[FAKECHROOT_PATH_MAX - 1] = '\0';
@@ -389,13 +416,48 @@ static void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const ar
  * Stores expanded interpreter in ctx->interpPath.
  * Returns pointer to original interpreter in hashbang (for display/argv0).
  * Sets *shebangArg to optional argument (or NULL).
+ *
+ * Buffer Reuse Strategy:
+ * ----------------------
+ * The expand_chroot_path() macro requires two temporary buffers.
+ * Instead of allocating them on stack, we reuse existing buffers:
+ *
+ *   fakechroot_abspath = ctx->interpPath
+ *     - ctx->interpPath is our destination anyway
+ *     - If expand_chroot_path puts result here, we skip the final copy
+ *
+ *   fakechroot_buf = *shebangArg (caller-provided)
+ *     - Caller (exec_build_script_argv) passes interp_buf via shebangArg
+ *     - We capture this pointer BEFORE strtok_r modifies *shebangArg
+ *     - After strtok_r, *shebangArg points into ctx->hashbang
+ *
+ *   Timeline of shebangArg pointer:
+ *   ┌────────────────────────┬─────────────────────────────────────┐
+ *   │ Phase                  │ *shebangArg points to               │
+ *   ├────────────────────────┼─────────────────────────────────────┤
+ *   │ Entry                  │ caller's interp_buf (temp buffer)   │
+ *   │ After fakechroot_buf=  │ (saved to fakechroot_buf)           │
+ *   │ After strtok_r         │ rest of shebang line in ctx->hashbang│
+ *   │ Return                 │ shebang arg or NULL                 │
+ *   └────────────────────────┴─────────────────────────────────────┘
+ *
+ * This saves ~4KB of stack space.
  */
 static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
 {
-    /* Reuse ctx->interpPath for expand_chroot_path (it's the destination anyway)
-     * Use caller-provided buffer via shebangArg (before strtok_r modifies it) */
+    /*
+     * Buffer reuse for expand_chroot_path macro:
+     *
+     * fakechroot_abspath: Use ctx->interpPath directly since it's our
+     * destination. If the macro stores the result there, we avoid a copy.
+     *
+     * fakechroot_buf: Use the buffer passed by caller through shebangArg.
+     * IMPORTANT: We must capture *shebangArg BEFORE strtok_r modifies it!
+     * The caller (exec_build_script_argv) initializes shebangArg to point
+     * to interp_buf, which we borrow as our temporary buffer.
+     */
     char *fakechroot_abspath = ctx->interpPath;
-    char *fakechroot_buf = *shebangArg;
+    char *fakechroot_buf = *shebangArg;  /* Capture before strtok_r! */
 
     /* Null-terminate at first newline - we only care about shebang line */
     char *nl = strchr(ctx->hashbang, '\n');
@@ -435,35 +497,90 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
 /*
  * Build argument vector for script execution via elfloader.
  *
- * Final argv layout:
+ * Final argv layout (wrapped execution):
  *   [displayArgv0, --argv0, displayArgv0, interpPath, shebang_arg?, script_path, user_args..., NULL]
+ *
+ * Final argv layout (direct execution):
+ *   [interpPath, shebang_arg?, script_path, user_args..., NULL]
  *
  * Where:
  *   - displayArgv0 = original interpreter from shebang (for ps/top and $^X)
  *   - interpPath = ctx->interpPath = expanded interpreter path (for ld.so to load)
  *   - shebang_arg is optional (only if shebang has argument after interpreter)
+ *
+ * Buffer Reuse Strategy:
+ * ----------------------
+ * We allocate ONE local buffer (interp_buf) that serves multiple purposes:
+ *
+ *   1. Passed to parse_shebang() as fakechroot_buf for path expansion
+ *   2. Reused to read interpreter's PT_INTERP for direct-exec check
+ *
+ * The shebangArg pointer serves as a "baton" to pass interp_buf to parse_shebang:
+ *   - Initially: shebangArg = interp_buf (points to our temp buffer)
+ *   - parse_shebang captures this, uses it as fakechroot_buf
+ *   - After strtok_r: shebangArg points into ctx->hashbang (or NULL)
+ *
+ *   Timeline of interp_buf usage:
+ *   ┌─────────────────────────┬─────────────────────────────────────────────┐
+ *   │ Phase                   │ interp_buf contains                         │
+ *   ├─────────────────────────┼─────────────────────────────────────────────┤
+ *   │ Before parse_shebang    │ (uninitialized - used as fakechroot_buf)    │
+ *   │ During parse_shebang    │ temp path data from expand_chroot_path      │
+ *   │ After parse_shebang     │ (garbage from path expansion)               │
+ *   │ After exec_read_elf     │ interpreter's PT_INTERP path (if ELF)       │
+ *   └─────────────────────────┴─────────────────────────────────────────────┘
+ *
+ *   Timeline of shebangArg pointer:
+ *   ┌─────────────────────────┬─────────────────────────────────────────────┐
+ *   │ Phase                   │ shebangArg points to                        │
+ *   ├─────────────────────────┼─────────────────────────────────────────────┤
+ *   │ Before parse_shebang    │ interp_buf (our temp buffer)                │
+ *   │ After parse_shebang     │ shebang arg in ctx->hashbang, or NULL       │
+ *   └─────────────────────────┴─────────────────────────────────────────────┘
+ *
+ * This saves ~4KB of stack space by reusing one buffer for two purposes.
  */
 static void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
 {
     unsigned int i, n;
     char *displayArgv0;
     int direct_exec = 0;
-    char interp_buf[FAKECHROOT_PATH_MAX];  /* Buffer for PT_INTERP / fakechroot_buf */
-    char *shebangArg = interp_buf;         /* Initially points to buffer for parse_shebang */
 
-    /* Parse shebang line:
-     * - Stores expanded interpreter in ctx->interpPath
-     * - Returns original interpreter pointer (for display)
-     * - Sets shebangArg pointer (or NULL)
-     * - Uses initial shebangArg value as fakechroot_buf */
+    /*
+     * Single buffer serving dual purpose:
+     * 1. Passed to parse_shebang as fakechroot_buf (via shebangArg pointer)
+     * 2. Later reused to store interpreter's PT_INTERP for direct-exec check
+     */
+    char interp_buf[FAKECHROOT_PATH_MAX];
+    char *shebangArg = interp_buf;  /* parse_shebang captures this for fakechroot_buf */
+
+    /*
+     * Parse shebang line and expand interpreter path:
+     *   - Reads ctx->hashbang which contains "#!..." from exec_prepare()
+     *   - Stores expanded interpreter path in ctx->interpPath
+     *   - Returns pointer to original interpreter in ctx->hashbang (for display)
+     *   - Uses interp_buf (via *shebangArg) as fakechroot_buf for path expansion
+     *   - After return, shebangArg points to optional arg in ctx->hashbang (or NULL)
+     */
     displayArgv0 = parse_shebang(ctx, &shebangArg);
 
-    /* Check if interpreter can be executed directly (has direct-exec PT_INTERP) */
+    /*
+     * Check if interpreter can be executed directly (has direct-exec PT_INTERP).
+     *
+     * Direct-exec interpreters are those already patched to use Android glibc
+     * or nix-ld shim, so they don't need the ld.so wrapper.
+     *
+     * IMPORTANT: We reuse interp_buf here to store the PT_INTERP path.
+     * This is SAFE because:
+     *   - displayArgv0 points into ctx->hashbang (original interpreter name)
+     *   - shebangArg points into ctx->hashbang (optional arg) or is NULL
+     *   - Neither points to interp_buf after parse_shebang returns
+     */
     int fd = nextcall(open)(ctx->interpPath, O_RDONLY);
     if (fd >= 0) {
         unsigned char header[64];
         if (read(fd, header, sizeof(header)) >= (ssize_t)sizeof(header)) {
-            /* Use separate buffer - displayArgv0/shebangArg point into ctx->hashbang */
+            /* Read interpreter's PT_INTERP into interp_buf (reusing the buffer) */
             int result = exec_read_elf_interp(interp_buf, fd, header);
             if (result == 1 && is_direct_exec_interp(interp_buf)) {
                 direct_exec = 1;
@@ -473,21 +590,35 @@ static void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const
         close(fd);
     }
 
-    /* Build prefix based on execution type */
+    /*
+     * Build argument vector based on execution type.
+     *
+     * Direct execution (interpreter already patched):
+     *   [interpPath, shebang_arg?, script_path, user_args..., NULL]
+     *   exec_get_path() returns ctx->interpPath
+     *
+     * Wrapped execution (needs ld.so --argv0):
+     *   [displayArgv0, --argv0, displayArgv0, interpPath, shebang_arg?, script_path, user_args..., NULL]
+     *   exec_get_path() returns ANDROID_ELFLOADER
+     *
+     * Note: displayArgv0 is the original interpreter name from shebang,
+     * used for ps/top display and $^X in scripts (e.g., "/usr/bin/perl").
+     * interpPath is the expanded path (e.g., "/nix/store/.../bin/perl").
+     */
     n = 0;
     if (direct_exec) {
-        /* Direct: [interpreter, ...] */
+        /* Direct: [interpreter, ...] - no ld.so wrapper needed */
         newargv[n++] = ctx->interpPath;
         ctx->type = EXEC_TYPE_DIRECT_SCRIPT;
     } else {
         /* Wrapped: [displayArgv0, --argv0, displayArgv0, interpreter, ...] */
-        newargv[n++] = displayArgv0;
-        newargv[n++] = ANDROID_ARGV0_OPT;
-        newargv[n++] = displayArgv0;
-        newargv[n++] = ctx->interpPath;
+        newargv[n++] = displayArgv0;         /* ld.so's argv[0] for ps/top */
+        newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 option */
+        newargv[n++] = displayArgv0;         /* interpreter's argv[0] for $^X */
+        newargv[n++] = ctx->interpPath;      /* actual interpreter to load */
     }
 
-    /* Common suffix: [shebang_arg?, script, user_args...] */
+    /* Common suffix for both execution types: [shebang_arg?, script, user_args...] */
     if (shebangArg) {
         newargv[n++] = shebangArg;
     }
