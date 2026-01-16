@@ -359,9 +359,9 @@ static int exec_read_header(exec_ctx_t *ctx)
         ctx->type = EXEC_TYPE_ELF;
         debug("exec: static ELF binary, using wrapper for sigaction setup");
     } else {
-        /* Not ELF or read error - use wrapper (safe fallback) */
-        ctx->type = EXEC_TYPE_ELF;
-        debug("exec: not ELF or read error, using wrapper");
+        /* Not ELF or read error - let kernel handle it directly */
+        ctx->type = EXEC_TYPE_ELF_DIRECT;
+        debug("exec: not ELF, direct execution (let kernel handle binfmt)");
     }
 
     close(file);
