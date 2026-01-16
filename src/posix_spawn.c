@@ -47,15 +47,13 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     for (envc = 0, p = (char **)envp; envp && *p; p++) envc++;
 
     /* VLAs for exact-size allocation */
-    const char *newargv[argc + EXEC_EXTRA_ARGV + 1];
+    char *newargv[argc + EXEC_EXTRA_ARGV + 1];
     char *newenvp[envc + preserve_env_list_count + 1];
     char envbuf[exec_preserve_env(envp, NULL, NULL) + 1];
 
     /* Build environment and prepare context */
     exec_preserve_env(envp, newenvp, envbuf);
-    if (exec_prepare(&ctx, filename, argv) != 0) {
-        return errno;
-    }
+    exec_prepare(&ctx, filename, argv);
 
     /* If executing ld.so directly, don't wrap it */
     if (ctx.is_ld_so) {
@@ -76,7 +74,7 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
           exec_get_path(&ctx), newargv[0], newargv[1], newargv[2], newargv[3]);
 
     return nextcall(posix_spawn)(pid, exec_get_path(&ctx), file_actions, attrp,
-                                 (char * const *)newargv, newenvp);
+                                 newargv, newenvp);
 }
 
 #endif

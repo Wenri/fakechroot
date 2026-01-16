@@ -59,9 +59,8 @@ typedef struct {
  * @param ctx       Context to initialize
  * @param filename  Original filename (will be expanded)
  * @param argv      Original argument vector (argv[0] is preserved for --argv0)
- * @return 0 on success, -1 on error (errno set)
  */
-int exec_prepare(exec_ctx_t *ctx, const char *filename, char * const argv[]);
+void exec_prepare(exec_ctx_t *ctx, const char *filename, char * const argv[]);
 
 /*
  * Build environment array with preserved variables.
@@ -92,7 +91,7 @@ int exec_read_header(exec_ctx_t *ctx);
  * @param newargv  Argument array to populate
  * @param argv     Original argument vector
  */
-void exec_build_elf_argv(exec_ctx_t *ctx, const char **newargv, char * const argv[]);
+void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]);
 
 /*
  * Parse hashbang line and build argument vector for script execution.
@@ -101,7 +100,7 @@ void exec_build_elf_argv(exec_ctx_t *ctx, const char **newargv, char * const arg
  * @param newargv  Argument array to populate
  * @param argv     Original argument vector
  */
-void exec_build_script_argv(exec_ctx_t *ctx, const char **newargv, char * const argv[]);
+void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]);
 
 /*
  * Get the executable path for the final exec call.

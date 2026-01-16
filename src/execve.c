@@ -125,7 +125,7 @@ size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf)
 /*
  * Prepare execution context: initialize and expand filename.
  */
-int exec_prepare(exec_ctx_t *ctx, const char *filename, char * const argv[])
+void exec_prepare(exec_ctx_t *ctx, const char *filename, char * const argv[])
 {
     /* These local refs are needed for expand_chroot_path macro */
     char *fakechroot_abspath = ctx->fakechroot_abspath;
@@ -151,8 +151,6 @@ int exec_prepare(exec_ctx_t *ctx, const char *filename, char * const argv[])
     if (ctx->is_ld_so) {
         debug("exec: executing dynamic linker directly, no wrapping: %s", ctx->tmp);
     }
-
-    return 0;
 }
 
 
@@ -196,7 +194,7 @@ int exec_read_header(exec_ctx_t *ctx)
  * - --argv0 + argv0 sets the program's argv[0] (for login shell detection)
  * - filename is the actual program to execute
  */
-void exec_build_elf_argv(exec_ctx_t *ctx, const char **newargv, char * const argv[])
+void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
 {
     unsigned int i, n;
 
@@ -221,7 +219,7 @@ void exec_build_elf_argv(exec_ctx_t *ctx, const char **newargv, char * const arg
  * Final argv layout:
  *   [shebang_interp, --argv0, shebang_interp, interpreter, interp_args..., script_path, user_args...]
  */
-void exec_build_script_argv(exec_ctx_t *ctx, const char **newargv, char * const argv[])
+void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
 {
     /* These local refs are needed for expand_chroot_path macro */
     char *fakechroot_abspath = ctx->fakechroot_abspath;
@@ -317,15 +315,13 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     for (envc = 0, p = (char **)envp; envp && *p; p++) envc++;
 
     /* VLAs for exact-size allocation */
-    const char *newargv[argc + EXEC_EXTRA_ARGV + 1];
+    char *newargv[argc + EXEC_EXTRA_ARGV + 1];
     char *newenvp[envc + preserve_env_list_count + 1];
     char envbuf[exec_preserve_env(envp, NULL, NULL) + 1];
 
     /* Build environment and prepare context */
     exec_preserve_env(envp, newenvp, envbuf);
-    if (exec_prepare(&ctx, filename, argv) != 0) {
-        return -1;
-    }
+    exec_prepare(&ctx, filename, argv);
 
     /* If executing ld.so directly, don't wrap it */
     if (ctx.is_ld_so) {
@@ -345,5 +341,5 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
           exec_get_path(&ctx), newargv[0], newargv[1], newargv[2], newargv[3]);
 
-    return nextcall(execve)(exec_get_path(&ctx), (char * const *)newargv, newenvp);
+    return nextcall(execve)(exec_get_path(&ctx), newargv, newenvp);
 }
