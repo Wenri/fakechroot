@@ -25,6 +25,9 @@
 /* Extra argv slots needed for elfloader: argv0 + --argv0 + argv0 + filename */
 #define EXEC_EXTRA_ARGV 4
 
+/* Max shebang args (Linux kernel only passes 1 optional arg after interpreter) */
+#define MAX_SHEBANG_ARGS 1
+
 /* Execution type determined by file header */
 typedef enum {
     EXEC_TYPE_ELF,      /* Regular ELF binary */
@@ -43,7 +46,7 @@ typedef struct {
     char argv0[FAKECHROOT_PATH_MAX];            /* argv[0] for --argv0 (original or shebang) */
 
     exec_type_t type;   /* Execution type (ELF, script, or ld.so) */
-    int hashbang_len;   /* Length of hashbang content read */
+    char *shebangArg;   /* Optional shebang arg (points into hashbang buffer, may be NULL) */
 } exec_ctx_t;
 
 /*

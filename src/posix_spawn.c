@@ -45,8 +45,10 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     for (argc = 0, p = (char **)argv; *p; p++) argc++;
     for (envc = 0, p = (char **)envp; envp && *p; p++) envc++;
 
-    /* VLAs for exact-size allocation */
-    char *newargv[argc + EXEC_EXTRA_ARGV + 1];
+    /* VLAs for exact-size allocation
+     * newargv needs: EXEC_EXTRA_ARGV + MAX_SHEBANG_ARGS + 1 (script) + (argc-1) (user args) + 1 (NULL)
+     * Simplified: argc + EXEC_EXTRA_ARGV + MAX_SHEBANG_ARGS + 1 */
+    char *newargv[argc + EXEC_EXTRA_ARGV + MAX_SHEBANG_ARGS + 1];
     char *newenvp[envc + preserve_env_list_count + 1];
     char envbuf[exec_preserve_env(envp, NULL, NULL) + 1];
 
