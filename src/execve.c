@@ -243,10 +243,10 @@ void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]
             if (i > j) {
                 if (n == 0) {
                     /* First token is the interpreter.
-                     * Save original shebang path for argv[0] (kernel behavior for $^X) */
-                    strncpy(ctx->shebang_argv0, &ctx->hashbang[j], FAKECHROOT_PATH_MAX - 1);
-                    ctx->shebang_argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
-                    debug("exec: shebang_argv0=\"%s\"", ctx->shebang_argv0);
+                     * Overwrite argv0 with shebang path (kernel behavior for $^X) */
+                    strncpy(ctx->argv0, &ctx->hashbang[j], FAKECHROOT_PATH_MAX - 1);
+                    ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
+                    debug("exec: argv0=\"%s\" (from shebang)", ctx->argv0);
 
                     /* Expand interpreter path */
                     const char *ptr = &ctx->hashbang[j];
@@ -283,9 +283,9 @@ void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]
 
     /* Set up elfloader arguments */
     n = 0;
-    newargv[n++] = ctx->shebang_argv0;   /* ld.so's argv[0]: shebang path for ps */
+    newargv[n++] = ctx->argv0;           /* ld.so's argv[0]: shebang path for ps */
     newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
-    newargv[n++] = ctx->shebang_argv0;   /* interpreter's argv[0]: shebang path */
+    newargv[n++] = ctx->argv0;           /* interpreter's argv[0]: shebang path */
     newargv[n] = ctx->newfilename;       /* interpreter path (resolved) */
 }
 
