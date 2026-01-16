@@ -125,32 +125,33 @@ size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf)
 /*
  * Prepare execution context: initialize and expand filename.
  */
-void exec_prepare(exec_ctx_t *ctx, const char *filename, char * const argv[])
+exec_ctx_t exec_prepare(const char *filename, char * const argv[])
 {
-    /* These local refs are needed for expand_chroot_path macro */
-    char *fakechroot_abspath = ctx->fakechroot_abspath;
-    char *fakechroot_buf = ctx->fakechroot_buf;
+    exec_ctx_t ctx = {0};
 
-    /* Initialize context */
-    memset(ctx, 0, sizeof(*ctx));
+    /* These local refs are needed for expand_chroot_path macro */
+    char *fakechroot_abspath = ctx.fakechroot_abspath;
+    char *fakechroot_buf = ctx.fakechroot_buf;
 
     /* Preserve original argv[0] for --argv0 option.
      * This is important for login shells where argv[0] is "-zsh" or "-bash" */
     if (argv && argv[0]) {
-        strncpy(ctx->argv0, argv[0], FAKECHROOT_PATH_MAX - 1);
-        ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
+        strncpy(ctx.argv0, argv[0], FAKECHROOT_PATH_MAX - 1);
+        ctx.argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
     }
 
     /* Expand filename path */
     expand_chroot_path(filename);
-    strncpy(ctx->tmp, filename, FAKECHROOT_PATH_MAX - 1);
-    ctx->tmp[FAKECHROOT_PATH_MAX - 1] = '\0';
+    strncpy(ctx.tmp, filename, FAKECHROOT_PATH_MAX - 1);
+    ctx.tmp[FAKECHROOT_PATH_MAX - 1] = '\0';
 
     /* Check if executing dynamic linker directly */
-    ctx->is_ld_so = is_dynamic_linker(ctx->tmp);
-    if (ctx->is_ld_so) {
-        debug("exec: executing dynamic linker directly, no wrapping: %s", ctx->tmp);
+    ctx.is_ld_so = is_dynamic_linker(ctx.tmp);
+    if (ctx.is_ld_so) {
+        debug("exec: executing dynamic linker directly, no wrapping: %s", ctx.tmp);
     }
+
+    return ctx;
 }
 
 
@@ -304,7 +305,6 @@ const char *exec_get_path(exec_ctx_t *ctx)
  */
 wrapper(execve, int, (const char * filename, char * const argv [], char * const envp []))
 {
-    exec_ctx_t ctx;
     int argc, envc;
     char **p;
 
@@ -321,7 +321,7 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
 
     /* Build environment and prepare context */
     exec_preserve_env(envp, newenvp, envbuf);
-    exec_prepare(&ctx, filename, argv);
+    exec_ctx_t ctx = exec_prepare(filename, argv);
 
     /* If executing ld.so directly, don't wrap it */
     if (ctx.is_ld_so) {

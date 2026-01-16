@@ -56,11 +56,11 @@ typedef struct {
 /*
  * Prepare execution context: initialize and expand filename.
  *
- * @param ctx       Context to initialize
  * @param filename  Original filename (will be expanded)
  * @param argv      Original argument vector (argv[0] is preserved for --argv0)
+ * @return Initialized execution context
  */
-void exec_prepare(exec_ctx_t *ctx, const char *filename, char * const argv[]);
+exec_ctx_t exec_prepare(const char *filename, char * const argv[]);
 
 /*
  * Build environment array with preserved variables.

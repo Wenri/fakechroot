@@ -36,7 +36,6 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
         const posix_spawnattr_t* attrp, char* const argv[],
         char * const envp []))
 {
-    exec_ctx_t ctx;
     int argc, envc;
     char **p;
 
@@ -53,7 +52,7 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
 
     /* Build environment and prepare context */
     exec_preserve_env(envp, newenvp, envbuf);
-    exec_prepare(&ctx, filename, argv);
+    exec_ctx_t ctx = exec_prepare(filename, argv);
 
     /* If executing ld.so directly, don't wrap it */
     if (ctx.is_ld_so) {
