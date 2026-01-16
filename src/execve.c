@@ -142,13 +142,13 @@ exec_ctx_t exec_prepare(const char *filename, char * const argv[])
 
     /* Expand filename path */
     expand_chroot_path(filename);
-    strncpy(ctx.tmp, filename, FAKECHROOT_PATH_MAX - 1);
-    ctx.tmp[FAKECHROOT_PATH_MAX - 1] = '\0';
+    strncpy(ctx.expandedFilename, filename, FAKECHROOT_PATH_MAX - 1);
+    ctx.expandedFilename[FAKECHROOT_PATH_MAX - 1] = '\0';
 
     /* Check if executing dynamic linker directly */
-    if (is_dynamic_linker(ctx.tmp)) {
+    if (is_dynamic_linker(ctx.expandedFilename)) {
         ctx.type = EXEC_TYPE_LDSO;
-        debug("exec: executing dynamic linker directly, no wrapping: %s", ctx.tmp);
+        debug("exec: executing dynamic linker directly, no wrapping: %s", ctx.expandedFilename);
     }
 
     return ctx;
@@ -163,7 +163,7 @@ int exec_read_header(exec_ctx_t *ctx)
     int file;
     int i;
 
-    file = nextcall(open)(ctx->tmp, O_RDONLY);
+    file = nextcall(open)(ctx->expandedFilename, O_RDONLY);
     if (file == -1) {
         __set_errno(ENOENT);
         return -1;
@@ -212,7 +212,7 @@ void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
     newargv[n++] = ctx->argv0;           /* ld.so's argv[0]: command name for ps */
     newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
     newargv[n++] = ctx->argv0;           /* program's argv[0] */
-    newargv[n] = ctx->tmp;               /* program path */
+    newargv[n] = ctx->expandedFilename;               /* program path */
 }
 
 
@@ -251,8 +251,8 @@ void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]
                     /* Expand interpreter path */
                     const char *ptr = &ctx->hashbang[j];
                     expand_chroot_path(ptr);
-                    strncpy(ctx->newfilename, ptr, FAKECHROOT_PATH_MAX - 1);
-                    ctx->newfilename[FAKECHROOT_PATH_MAX - 1] = '\0';
+                    strncpy(ctx->interpreterPath, ptr, FAKECHROOT_PATH_MAX - 1);
+                    ctx->interpreterPath[FAKECHROOT_PATH_MAX - 1] = '\0';
                 }
                 newargv[n++] = &ctx->hashbang[j];
             }
@@ -263,7 +263,7 @@ void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]
     }
 
     /* Add the script path for the interpreter */
-    newargv[n++] = ctx->tmp;
+    newargv[n++] = ctx->expandedFilename;
 
     /* Add user arguments (skip argv[0]) */
     for (i = 1; argv[i] != NULL; ) {
@@ -272,7 +272,7 @@ void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]
     newargv[n] = NULL;
 
     /* Now shift everything to make room for elfloader args at the front.
-     * Skip newargv[0] (interpreter from hashbang) since it's redundant with newfilename. */
+     * Skip newargv[0] (interpreter from hashbang) since it's redundant with interpreterPath. */
     j = EXEC_EXTRA_ARGV;
 
     /* Shift elements from [1..n-1] to [j..j+n-2], iterate backwards */
@@ -286,7 +286,7 @@ void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]
     newargv[n++] = ctx->argv0;           /* ld.so's argv[0]: shebang path for ps */
     newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
     newargv[n++] = ctx->argv0;           /* interpreter's argv[0]: shebang path */
-    newargv[n] = ctx->newfilename;       /* interpreter path (resolved) */
+    newargv[n] = ctx->interpreterPath;       /* interpreter path (resolved) */
 }
 
 
@@ -296,7 +296,7 @@ void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]
 const char *exec_get_path(exec_ctx_t *ctx)
 {
     if (ctx->type == EXEC_TYPE_LDSO) {
-        return ctx->tmp;
+        return ctx->expandedFilename;
     }
     return ANDROID_ELFLOADER;
 }
@@ -327,7 +327,7 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
 
     /* If executing ld.so directly, don't wrap it */
     if (ctx.type == EXEC_TYPE_LDSO) {
-        return nextcall(execve)(ctx.tmp, argv, newenvp);
+        return nextcall(execve)(ctx.expandedFilename, argv, newenvp);
     }
 
     if (exec_read_header(&ctx) != 0) {

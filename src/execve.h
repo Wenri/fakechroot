@@ -37,10 +37,10 @@ typedef enum {
  * Used by both execve() and posix_spawn() to share common logic.
  */
 typedef struct {
-    char hashbang[FAKECHROOT_PATH_MAX];       /* File header / hashbang content */
-    char tmp[FAKECHROOT_PATH_MAX];            /* Expanded filename */
-    char newfilename[FAKECHROOT_PATH_MAX];    /* Resolved interpreter path (for shebang) */
-    char argv0[FAKECHROOT_PATH_MAX];          /* argv[0] for --argv0 (original or shebang) */
+    char hashbang[FAKECHROOT_PATH_MAX];         /* File header / hashbang content */
+    char expandedFilename[FAKECHROOT_PATH_MAX]; /* Expanded path to execute */
+    char interpreterPath[FAKECHROOT_PATH_MAX];  /* Expanded interpreter (scripts only) */
+    char argv0[FAKECHROOT_PATH_MAX];            /* argv[0] for --argv0 (original or shebang) */
 
     exec_type_t type;   /* Execution type (ELF, script, or ld.so) */
     int hashbang_len;   /* Length of hashbang content read */
@@ -99,7 +99,7 @@ void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]
  * Get the executable path for the final exec call.
  *
  * @param ctx  Execution context
- * @return ANDROID_ELFLOADER for wrapped execution, or ctx->tmp for direct ld.so
+ * @return ANDROID_ELFLOADER for wrapped execution, or ctx->expandedFilename for direct ld.so
  */
 const char *exec_get_path(exec_ctx_t *ctx);
 

@@ -56,7 +56,7 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
 
     /* If executing ld.so directly, don't wrap it */
     if (ctx.type == EXEC_TYPE_LDSO) {
-        return nextcall(posix_spawn)(pid, ctx.tmp, file_actions, attrp, argv, newenvp);
+        return nextcall(posix_spawn)(pid, ctx.expandedFilename, file_actions, attrp, argv, newenvp);
     }
 
     if (exec_read_header(&ctx) != 0) {
