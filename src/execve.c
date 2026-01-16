@@ -158,7 +158,7 @@ exec_ctx_t exec_prepare(const char *filename, char * const argv[])
 /*
  * Read file header to detect hashbang scripts vs ELF binaries.
  */
-int exec_read_header(exec_ctx_t *ctx)
+static int exec_read_header(exec_ctx_t *ctx)
 {
     int file;
     int i;
@@ -197,7 +197,7 @@ int exec_read_header(exec_ctx_t *ctx)
  * - --argv0 + argv0 sets the program's argv[0] (for login shell detection)
  * - filename is the actual program to execute
  */
-void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
+static void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
 {
     unsigned int i, n;
 
@@ -287,7 +287,7 @@ static void parse_shebang(exec_ctx_t *ctx)
  *
  * Where shebang_arg is optional (only if shebang has argument after interpreter).
  */
-void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
+static void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
 {
     unsigned int i, n;
 
@@ -314,6 +314,26 @@ void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]
         newargv[n++] = argv[i++];
     }
     newargv[n] = NULL;
+}
+
+
+/*
+ * Read file header and build argument vector for elfloader.
+ * Dispatches to appropriate builder based on detected file type.
+ */
+int exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
+{
+    if (exec_read_header(ctx) != 0) {
+        return -1;
+    }
+
+    if (ctx->type == EXEC_TYPE_SCRIPT) {
+        exec_build_script_argv(ctx, newargv, argv);
+    } else {
+        exec_build_elf_argv(ctx, newargv, argv);
+    }
+
+    return 0;
 }
 
 
@@ -360,14 +380,8 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
         return nextcall(execve)(ctx.expandedFilename, argv, newenvp);
     }
 
-    if (exec_read_header(&ctx) != 0) {
+    if (exec_build_argv(&ctx, newargv, argv) != 0) {
         return -1;
-    }
-
-    if (ctx.type == EXEC_TYPE_SCRIPT) {
-        exec_build_script_argv(&ctx, newargv, argv);
-    } else {
-        exec_build_elf_argv(&ctx, newargv, argv);
     }
 
     debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",

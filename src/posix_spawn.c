@@ -62,14 +62,8 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
         return nextcall(posix_spawn)(pid, ctx.expandedFilename, file_actions, attrp, argv, newenvp);
     }
 
-    if (exec_read_header(&ctx) != 0) {
+    if (exec_build_argv(&ctx, newargv, argv) != 0) {
         return errno;
-    }
-
-    if (ctx.type == EXEC_TYPE_SCRIPT) {
-        exec_build_script_argv(&ctx, newargv, argv);
-    } else {
-        exec_build_elf_argv(&ctx, newargv, argv);
     }
 
     debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",

@@ -78,31 +78,15 @@ exec_ctx_t exec_prepare(const char *filename, char * const argv[]);
 size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf);
 
 /*
- * Read file header to detect hashbang scripts vs ELF binaries.
- * Sets ctx->is_script based on "#!" detection.
+ * Read file header and build argument vector for elfloader.
+ * Dispatches to appropriate builder based on detected file type (ELF or script).
  *
- * @param ctx  Execution context (ctx->tmp must contain expanded filename)
+ * @param ctx      Execution context
+ * @param newargv  Argument array to populate
+ * @param argv     Original argument vector
  * @return 0 on success, -1 on error (errno set)
  */
-int exec_read_header(exec_ctx_t *ctx);
-
-/*
- * Build argument vector for ELF binary execution via elfloader.
- *
- * @param ctx      Execution context
- * @param newargv  Argument array to populate
- * @param argv     Original argument vector
- */
-void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]);
-
-/*
- * Parse hashbang line and build argument vector for script execution.
- *
- * @param ctx      Execution context
- * @param newargv  Argument array to populate
- * @param argv     Original argument vector
- */
-void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]);
+int exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]);
 
 /*
  * Get the executable path for the final exec call.
