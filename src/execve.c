@@ -501,7 +501,7 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
  *   [displayArgv0, --argv0, displayArgv0, interpPath, shebang_arg?, script_path, user_args..., NULL]
  *
  * Final argv layout (direct execution):
- *   [interpPath, shebang_arg?, script_path, user_args..., NULL]
+ *   [displayArgv0, shebang_arg?, script_path, user_args..., NULL]
  *
  * Where:
  *   - displayArgv0 = original interpreter from shebang (for ps/top and $^X)
@@ -594,8 +594,8 @@ static void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const
      * Build argument vector based on execution type.
      *
      * Direct execution (interpreter already patched):
-     *   [interpPath, shebang_arg?, script_path, user_args..., NULL]
-     *   exec_get_path() returns ctx->interpPath
+     *   [displayArgv0, shebang_arg?, script_path, user_args..., NULL]
+     *   exec_get_path() returns ctx->interpPath (actual binary to execute)
      *
      * Wrapped execution (needs ld.so --argv0):
      *   [displayArgv0, --argv0, displayArgv0, interpPath, shebang_arg?, script_path, user_args..., NULL]
@@ -607,8 +607,12 @@ static void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const
      */
     n = 0;
     if (direct_exec) {
-        /* Direct: [interpreter, ...] - no ld.so wrapper needed */
-        newargv[n++] = ctx->interpPath;
+        /* Direct: [displayArgv0, ...] - no ld.so wrapper needed
+         * Use displayArgv0 for argv[0] to match kernel behavior:
+         * kernel sets interpreter's argv[0] to the shebang path (e.g., "/usr/bin/perl")
+         * This ensures $^X in Perl, sys.executable in Python, etc. show expected value.
+         * The actual execution path is ctx->interpPath (returned by exec_get_path). */
+        newargv[n++] = displayArgv0;
         ctx->type = EXEC_TYPE_DIRECT_SCRIPT;
     } else {
         /* Wrapped: [displayArgv0, --argv0, displayArgv0, interpreter, ...] */
