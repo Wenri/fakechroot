@@ -147,6 +147,7 @@ libfakechroot_la_SOURCES = \
     setenv.c \
     setenv.h \
     setxattr.c \
+    sigaction.c \
     stat.c \
     stat.h \
     stat64.c \

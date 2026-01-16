@@ -107,15 +107,14 @@ LOCAL int fakechroot_debug (const char *fmt, ...)
 #define SYS_SECCOMP 1
 #endif
 
-static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
+/* Get saved handler from sigaction.c for chaining */
+extern struct sigaction *fakechroot_get_saved_sigsys_handler(void);
+
+/* Non-static so sigaction.c can reference it */
+void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
 {
-    (void)sig;
-
-    if (info->si_code != SYS_SECCOMP)
-        return;
-
-    /* Handle blocked syscalls by returning ENOSYS */
-    if (info->si_syscall == SYS_faccessat2) {
+    /* Handle seccomp-blocked faccessat2 by returning ENOSYS */
+    if (info->si_code == SYS_SECCOMP && info->si_syscall == SYS_faccessat2) {
         ucontext_t *ctx = (ucontext_t *)ucontext;
 #ifdef __aarch64__
         /* On aarch64, x0 holds the return value */
@@ -126,18 +125,44 @@ static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
         ctx->uc_mcontext.gregs[REG_RAX] = -ENOSYS;
 #endif
         debug("sigsys: blocked faccessat2, returning ENOSYS");
+        return;
+    }
+
+    /* Chain to saved handler (e.g., Go's handler) for other SIGSYS signals */
+    struct sigaction *saved = fakechroot_get_saved_sigsys_handler();
+    if (saved != NULL) {
+        if (saved->sa_flags & SA_SIGINFO) {
+            if (saved->sa_sigaction != NULL) {
+                debug("sigsys: chaining to saved SA_SIGINFO handler");
+                saved->sa_sigaction(sig, info, ucontext);
+            }
+        } else {
+            if (saved->sa_handler != NULL && saved->sa_handler != SIG_IGN && saved->sa_handler != SIG_DFL) {
+                debug("sigsys: chaining to saved handler");
+                saved->sa_handler(sig);
+            }
+        }
     }
 }
 
 static void fakechroot_install_sigsys_handler(void)
 {
     struct sigaction sa;
+    int (*real_sigaction)(int, const struct sigaction *, struct sigaction *);
+
+    /* Use dlsym to get real sigaction, avoiding our wrapper */
+    real_sigaction = dlsym(RTLD_NEXT, "sigaction");
+    if (real_sigaction == NULL) {
+        debug("sigsys: failed to find real sigaction");
+        return;
+    }
+
     memset(&sa, 0, sizeof(sa));
     sa.sa_sigaction = fakechroot_sigsys_handler;
     sa.sa_flags = SA_SIGINFO;
     sigemptyset(&sa.sa_mask);
 
-    if (sigaction(SIGSYS, &sa, NULL) == 0) {
+    if (real_sigaction(SIGSYS, &sa, NULL) == 0) {
         debug("sigsys: handler installed for seccomp bypass");
     }
 }
