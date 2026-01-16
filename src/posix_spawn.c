@@ -49,7 +49,7 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     /* VLAs for exact-size allocation */
     const char *newargv[argc + EXEC_EXTRA_ARGV + 1];
     char *newenvp[envc + preserve_env_list_count + 1];
-    size_t envbuf_size = exec_envbuf_size();
+    size_t envbuf_size = exec_envbuf_size(envp);
     char envbuf[envbuf_size];
 
     if (exec_prepare(&ctx, newargv, newenvp, envbuf, filename, argv, envp) != 0) {

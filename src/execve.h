@@ -76,9 +76,10 @@ int exec_prepare(exec_ctx_t *ctx, const char **newargv, char **newenvp,
  * Calculate size needed for preserved environment variable strings.
  * Used to allocate VLA buffer before calling exec_prepare.
  *
- * @return Total bytes needed for all preserved env strings
+ * @param envp  Original environment (to check for duplicates)
+ * @return Total bytes needed for preserved env strings not already in envp
  */
-size_t exec_envbuf_size(void);
+size_t exec_envbuf_size(char * const envp[]);
 
 /*
  * Read file header to detect hashbang scripts vs ELF binaries.
