@@ -55,7 +55,7 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
     exec_ctx_t ctx = exec_prepare(filename, argv);
 
     /* If executing ld.so directly, don't wrap it */
-    if (ctx.is_ld_so) {
+    if (ctx.type == EXEC_TYPE_LDSO) {
         return nextcall(posix_spawn)(pid, ctx.tmp, file_actions, attrp, argv, newenvp);
     }
 
@@ -63,7 +63,7 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
         return errno;
     }
 
-    if (ctx.is_script) {
+    if (ctx.type == EXEC_TYPE_SCRIPT) {
         exec_build_script_argv(&ctx, newargv, argv);
     } else {
         exec_build_elf_argv(&ctx, newargv, argv);

@@ -146,8 +146,8 @@ exec_ctx_t exec_prepare(const char *filename, char * const argv[])
     ctx.tmp[FAKECHROOT_PATH_MAX - 1] = '\0';
 
     /* Check if executing dynamic linker directly */
-    ctx.is_ld_so = is_dynamic_linker(ctx.tmp);
-    if (ctx.is_ld_so) {
+    if (is_dynamic_linker(ctx.tmp)) {
+        ctx.type = EXEC_TYPE_LDSO;
         debug("exec: executing dynamic linker directly, no wrapping: %s", ctx.tmp);
     }
 
@@ -181,7 +181,9 @@ int exec_read_header(exec_ctx_t *ctx)
     ctx->hashbang[i] = ctx->hashbang[i + 1] = '\0';
 
     /* Check for hashbang */
-    ctx->is_script = (ctx->hashbang[0] == '#' && ctx->hashbang[1] == '!');
+    if (ctx->hashbang[0] == '#' && ctx->hashbang[1] == '!') {
+        ctx->type = EXEC_TYPE_SCRIPT;
+    }
 
     return 0;
 }
@@ -293,7 +295,7 @@ void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]
  */
 const char *exec_get_path(exec_ctx_t *ctx)
 {
-    if (ctx->is_ld_so) {
+    if (ctx->type == EXEC_TYPE_LDSO) {
         return ctx->tmp;
     }
     return ANDROID_ELFLOADER;
@@ -324,7 +326,7 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
     exec_ctx_t ctx = exec_prepare(filename, argv);
 
     /* If executing ld.so directly, don't wrap it */
-    if (ctx.is_ld_so) {
+    if (ctx.type == EXEC_TYPE_LDSO) {
         return nextcall(execve)(ctx.tmp, argv, newenvp);
     }
 
@@ -332,7 +334,7 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
         return -1;
     }
 
-    if (ctx.is_script) {
+    if (ctx.type == EXEC_TYPE_SCRIPT) {
         exec_build_script_argv(&ctx, newargv, argv);
     } else {
         exec_build_elf_argv(&ctx, newargv, argv);

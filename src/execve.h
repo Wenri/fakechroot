@@ -25,6 +25,13 @@
 /* Extra argv slots needed for elfloader: argv0 + --argv0 + argv0 + filename */
 #define EXEC_EXTRA_ARGV 4
 
+/* Execution type determined by file header */
+typedef enum {
+    EXEC_TYPE_ELF,      /* Regular ELF binary */
+    EXEC_TYPE_SCRIPT,   /* Hashbang script (#!) */
+    EXEC_TYPE_LDSO      /* Dynamic linker (ld.so) - no wrapping needed */
+} exec_type_t;
+
 /*
  * Execution context structure - holds buffers and state for exec operations.
  * Used by both execve() and posix_spawn() to share common logic.
@@ -44,12 +51,8 @@ typedef struct {
     char argv0[FAKECHROOT_PATH_MAX];          /* Original argv[0] (for --argv0) */
     char shebang_argv0[FAKECHROOT_PATH_MAX];  /* Shebang interpreter path for argv[0] */
 
-
-    /* Execution flags */
-    int is_script;      /* 1 if hashbang script, 0 if ELF binary */
-    int is_ld_so;       /* 1 if executing dynamic linker directly */
-
-    /* Hashbang parsing state */
+    /* Execution state */
+    exec_type_t type;   /* Execution type (ELF, script, or ld.so) */
     int hashbang_len;   /* Length of hashbang content read */
 } exec_ctx_t;
 
