@@ -35,15 +35,8 @@ typedef enum {
 /*
  * Execution context structure - holds buffers and state for exec operations.
  * Used by both execve() and posix_spawn() to share common logic.
- *
- * The newargv/newenvp arrays are VLAs allocated by the caller and passed
- * as pointers here. This allows exact-size allocation on the stack.
  */
 typedef struct {
-    /* Buffers required by expand_chroot_path macro */
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
-    char fakechroot_buf[FAKECHROOT_PATH_MAX];
-
     /* Execution state */
     char hashbang[FAKECHROOT_PATH_MAX];       /* File header / hashbang content */
     char tmp[FAKECHROOT_PATH_MAX];            /* Expanded filename */
@@ -51,7 +44,6 @@ typedef struct {
     char argv0[FAKECHROOT_PATH_MAX];          /* Original argv[0] (for --argv0) */
     char shebang_argv0[FAKECHROOT_PATH_MAX];  /* Shebang interpreter path for argv[0] */
 
-    /* Execution state */
     exec_type_t type;   /* Execution type (ELF, script, or ld.so) */
     int hashbang_len;   /* Length of hashbang content read */
 } exec_ctx_t;

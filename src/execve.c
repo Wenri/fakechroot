@@ -129,9 +129,9 @@ exec_ctx_t exec_prepare(const char *filename, char * const argv[])
 {
     exec_ctx_t ctx = {0};
 
-    /* These local refs are needed for expand_chroot_path macro */
-    char *fakechroot_abspath = ctx.fakechroot_abspath;
-    char *fakechroot_buf = ctx.fakechroot_buf;
+    /* Local buffers for expand_chroot_path macro */
+    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
+    char fakechroot_buf[FAKECHROOT_PATH_MAX];
 
     /* Preserve original argv[0] for --argv0 option.
      * This is important for login shells where argv[0] is "-zsh" or "-bash" */
@@ -224,9 +224,9 @@ void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
  */
 void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
 {
-    /* These local refs are needed for expand_chroot_path macro */
-    char *fakechroot_abspath = ctx->fakechroot_abspath;
-    char *fakechroot_buf = ctx->fakechroot_buf;
+    /* Local buffers for expand_chroot_path macro */
+    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
+    char fakechroot_buf[FAKECHROOT_PATH_MAX];
 
     unsigned int i, j, n;
     char c;
