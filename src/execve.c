@@ -221,16 +221,18 @@ static void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const ar
  * - Interpreter path (first token)
  * - Optional single argument (everything after first whitespace until newline)
  *
- * Sets ctx->argv0 to shebang interpreter path (for $^X),
- * ctx->interpreterPath to expanded interpreter, and ctx->shebangArg if present.
+ * Stores expanded interpreter in ctx->argv0.
+ * Returns pointer to original interpreter in hashbang (for display/argv0).
+ * Sets *shebangArg to optional argument (or NULL).
  */
-static void parse_shebang(exec_ctx_t *ctx)
+static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
 {
     /* Local buffers for expand_chroot_path macro */
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
 
     unsigned int i, j;
+    char *originalInterp;
 
     /* Skip "#!" and leading whitespace */
     for (i = 2; (ctx->hashbang[i] == ' ' || ctx->hashbang[i] == '\t') && i < FAKECHROOT_PATH_MAX; i++)
@@ -247,19 +249,18 @@ static void parse_shebang(exec_ctx_t *ctx)
     char end_char = ctx->hashbang[i];
     ctx->hashbang[i] = '\0';
 
-    /* Save interpreter path as argv0 (kernel behavior for $^X) */
-    strncpy(ctx->argv0, &ctx->hashbang[j], FAKECHROOT_PATH_MAX - 1);
-    ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
-    debug("exec: argv0=\"%s\" (from shebang)", ctx->argv0);
+    /* Save pointer to original interpreter (for display) */
+    originalInterp = &ctx->hashbang[j];
+    debug("exec: originalInterp=\"%s\" (from shebang)", originalInterp);
 
-    /* Expand interpreter path */
+    /* Expand interpreter path and store in ctx->argv0 */
     const char *ptr = &ctx->hashbang[j];
     expand_chroot_path(ptr);
-    strncpy(ctx->interpreterPath, ptr, FAKECHROOT_PATH_MAX - 1);
-    ctx->interpreterPath[FAKECHROOT_PATH_MAX - 1] = '\0';
+    strncpy(ctx->argv0, ptr, FAKECHROOT_PATH_MAX - 1);
+    ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
 
     /* Parse optional argument (everything after whitespace until newline) */
-    ctx->shebangArg = NULL;
+    *shebangArg = NULL;
     if (end_char == ' ' || end_char == '\t') {
         i++;
         /* Skip whitespace between interpreter and arg */
@@ -268,42 +269,52 @@ static void parse_shebang(exec_ctx_t *ctx)
         }
         /* If there's content before newline, that's the single arg */
         if (i < FAKECHROOT_PATH_MAX && ctx->hashbang[i] != '\0' && ctx->hashbang[i] != '\n') {
-            ctx->shebangArg = &ctx->hashbang[i];
+            *shebangArg = &ctx->hashbang[i];
             /* Find end of arg (newline or null) and terminate */
             while (i < FAKECHROOT_PATH_MAX && ctx->hashbang[i] != '\0' && ctx->hashbang[i] != '\n') {
                 i++;
             }
             ctx->hashbang[i] = '\0';
-            debug("exec: shebangArg=\"%s\"", ctx->shebangArg);
+            debug("exec: shebangArg=\"%s\"", *shebangArg);
         }
     }
+
+    return originalInterp;
 }
 
 /*
  * Build argument vector for script execution via elfloader.
  *
  * Final argv layout:
- *   [argv0, --argv0, argv0, interpreter, shebang_arg?, script_path, user_args..., NULL]
+ *   [displayArgv0, --argv0, displayArgv0, expandedInterp, shebang_arg?, script_path, user_args..., NULL]
  *
- * Where shebang_arg is optional (only if shebang has argument after interpreter).
+ * Where:
+ *   - displayArgv0 = original interpreter from shebang (for ps/top and $^X)
+ *   - expandedInterp = ctx->argv0 = expanded interpreter path (for ld.so to load)
+ *   - shebang_arg is optional (only if shebang has argument after interpreter)
  */
 static void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
 {
     unsigned int i, n;
+    char *shebangArg;
+    char *displayArgv0;
 
-    /* Parse shebang line (sets ctx->argv0, ctx->interpreterPath, ctx->shebangArg) */
-    parse_shebang(ctx);
+    /* Parse shebang line:
+     * - Stores expanded interpreter in ctx->argv0
+     * - Returns original interpreter pointer (for display)
+     * - Sets shebangArg pointer (or NULL) */
+    displayArgv0 = parse_shebang(ctx, &shebangArg);
 
     /* Build argv directly in correct order */
     n = 0;
-    newargv[n++] = ctx->argv0;           /* ld.so's argv[0]: shebang path for ps */
+    newargv[n++] = displayArgv0;         /* ld.so's argv[0]: original for ps */
     newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
-    newargv[n++] = ctx->argv0;           /* interpreter's argv[0]: shebang path */
-    newargv[n++] = ctx->interpreterPath; /* interpreter path (resolved) */
+    newargv[n++] = displayArgv0;         /* interpreter's argv[0]: original for $^X */
+    newargv[n++] = ctx->argv0;           /* expanded interpreter (for ld.so to load) */
 
     /* Add optional shebang argument (kernel passes only 1 arg) */
-    if (ctx->shebangArg) {
-        newargv[n++] = ctx->shebangArg;
+    if (shebangArg) {
+        newargv[n++] = shebangArg;
     }
 
     /* Add script path */

@@ -46,13 +46,11 @@ typedef enum {
  * Used by both execve() and posix_spawn() to share common logic.
  */
 typedef struct {
-    char hashbang[FAKECHROOT_PATH_MAX];         /* File header / hashbang content */
+    char hashbang[FAKECHROOT_PATH_MAX];         /* File header (scripts: contains original interp) */
     char expandedFilename[FAKECHROOT_PATH_MAX]; /* Expanded path to execute */
-    char interpreterPath[FAKECHROOT_PATH_MAX];  /* Expanded interpreter (scripts only) */
-    char argv0[FAKECHROOT_PATH_MAX];            /* argv[0] for --argv0 (original or shebang) */
-
+    char argv0[FAKECHROOT_PATH_MAX];            /* ELF: original argv[0] (e.g., "-zsh")
+                                                   Script: expanded interpreter path */
     exec_type_t type;   /* Execution type (ELF, script, or ld.so) */
-    char *shebangArg;   /* Optional shebang arg (points into hashbang buffer, may be NULL) */
 } exec_ctx_t;
 
 /*
