@@ -230,10 +230,10 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
     /* Local buffers for expand_chroot_path macro */
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
-    char *saveptr;
 
-    /* Get interpreter (first whitespace-delimited token after "#!") */
-    char *originalInterp = strtok_r(ctx->hashbang + 2, " \t\n", &saveptr);
+    /* Get interpreter (first whitespace-delimited token after "#!")
+     * shebangArg is used as saveptr, will point to rest of line */
+    char *originalInterp = strtok_r(ctx->hashbang + 2, " \t\n", shebangArg);
     if (!originalInterp) {
         *shebangArg = NULL;
         return NULL;
@@ -246,12 +246,11 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
     strncpy(ctx->argv0, ptr, FAKECHROOT_PATH_MAX - 1);
     ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
 
-    /* Get optional shebang arg (rest of line until newline - kernel behavior) */
-    while (*saveptr == ' ' || *saveptr == '\t') saveptr++;
+    /* Clean up shebangArg: skip whitespace, null-terminate at newline */
+    while (**shebangArg == ' ' || **shebangArg == '\t') (*shebangArg)++;
 
-    if (*saveptr && *saveptr != '\n') {
-        *shebangArg = saveptr;
-        char *nl = strchr(saveptr, '\n');
+    if (**shebangArg && **shebangArg != '\n') {
+        char *nl = strchr(*shebangArg, '\n');
         if (nl) *nl = '\0';
         debug("exec: shebangArg=\"%s\"", *shebangArg);
     } else {
