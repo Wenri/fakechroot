@@ -34,33 +34,80 @@
 #endif
 
 /*
- * Syscalls blocked by Android seccomp that trigger SIGSYS (SECCOMP_RET_TRAP).
- * These need our handler to return ENOSYS for fallback.
+ * Syscalls blocked by Android seccomp that should return ENOSYS.
  *
- * Note: Many blocked syscalls use SECCOMP_RET_ERRNO and return ENOSYS directly.
- * Only syscalls using SECCOMP_RET_TRAP send SIGSYS and need this handler.
+ * Android's seccomp uses two blocking modes:
+ * - SECCOMP_RET_ERRNO: Returns ENOSYS directly (kernel handles it)
+ * - SECCOMP_RET_TRAP: Sends SIGSYS (we handle it here)
  *
- * Tested on Android kernel 5.10.43 - these actually trigger SIGSYS:
+ * We include both types for safety - if kernel returns ENOSYS directly,
+ * our handler won't be called. This also covers potential future changes
+ * in Android's seccomp configuration.
+ *
+ * List matches glibc's Termux patches (fakesyscall.json) plus syscalls
+ * that trigger SIGSYS on Android kernel 5.10.43.
  */
 static int is_blocked_syscall(int syscall_nr)
 {
     switch (syscall_nr) {
-    /* eBPF */
+    /*
+     * Syscalls that trigger SIGSYS (SECCOMP_RET_TRAP) on Android 5.10.43:
+     */
     case SYS_bpf:
-    /* Memory protection keys */
     case SYS_pkey_mprotect:
     case SYS_pkey_alloc:
     case SYS_pkey_free:
-    /* Async I/O */
     case SYS_io_pgetevents:
-    /* File operations - Go may use these */
     case SYS_openat2:
-    /* Epoll - Go may use this */
     case SYS_epoll_pwait2:
-    /* Mount operations */
     case SYS_mount_setattr:
-    /* Process operations */
     case SYS_process_mrelease:
+    /*
+     * Syscalls that return ENOSYS directly (SECCOMP_RET_ERRNO) but included
+     * for completeness and future-proofing (matches glibc Termux patches):
+     */
+    /* Process/thread */
+    case SYS_clone3:
+    case SYS_rseq:
+    case SYS_set_robust_list:
+    case SYS_get_robust_list:
+    /* Futex */
+    case SYS_futex_waitv:
+    /* Landlock */
+    case SYS_landlock_create_ruleset:
+    case SYS_landlock_add_rule:
+    case SYS_landlock_restrict_self:
+    /* pidfd */
+    case SYS_pidfd_send_signal:
+    /* io_uring */
+    case SYS_io_uring_setup:
+    case SYS_io_uring_enter:
+    case SYS_io_uring_register:
+    /* File handles */
+    case SYS_name_to_handle_at:
+    case SYS_open_by_handle_at:
+    /* Process */
+    case SYS_kcmp:
+    /* NUMA */
+    case SYS_mbind:
+    case SYS_get_mempolicy:
+    case SYS_set_mempolicy:
+    /* POSIX MQ */
+    case SYS_mq_open:
+    /* SysV semaphores */
+    case SYS_semget:
+    case SYS_semctl:
+    case SYS_semop:
+    case SYS_semtimedop:
+    /* SysV message queues */
+    case SYS_msgctl:
+    case SYS_msgget:
+    case SYS_msgrcv:
+    case SYS_msgsnd:
+    /* File access */
+    case SYS_faccessat2:
+    /* Close range */
+    case SYS_close_range:
         return 1;
     default:
         return 0;
