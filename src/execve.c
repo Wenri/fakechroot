@@ -230,53 +230,32 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
     /* Local buffers for expand_chroot_path macro */
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
+    char *saveptr;
 
-    unsigned int i, j;
-    char *originalInterp;
-
-    /* Skip "#!" and leading whitespace */
-    for (i = 2; (ctx->hashbang[i] == ' ' || ctx->hashbang[i] == '\t') && i < FAKECHROOT_PATH_MAX; i++)
-        ;
-    j = i;
-
-    /* Find end of interpreter path */
-    while (i < FAKECHROOT_PATH_MAX && ctx->hashbang[i] != '\0' &&
-           ctx->hashbang[i] != ' ' && ctx->hashbang[i] != '\t' && ctx->hashbang[i] != '\n') {
-        i++;
+    /* Get interpreter (first whitespace-delimited token after "#!") */
+    char *originalInterp = strtok_r(ctx->hashbang + 2, " \t\n", &saveptr);
+    if (!originalInterp) {
+        *shebangArg = NULL;
+        return NULL;
     }
-
-    /* Null-terminate interpreter path */
-    char end_char = ctx->hashbang[i];
-    ctx->hashbang[i] = '\0';
-
-    /* Save pointer to original interpreter (for display) */
-    originalInterp = &ctx->hashbang[j];
     debug("exec: originalInterp=\"%s\" (from shebang)", originalInterp);
 
     /* Expand interpreter path and store in ctx->argv0 */
-    const char *ptr = &ctx->hashbang[j];
+    const char *ptr = originalInterp;
     expand_chroot_path(ptr);
     strncpy(ctx->argv0, ptr, FAKECHROOT_PATH_MAX - 1);
     ctx->argv0[FAKECHROOT_PATH_MAX - 1] = '\0';
 
-    /* Parse optional argument (everything after whitespace until newline) */
-    *shebangArg = NULL;
-    if (end_char == ' ' || end_char == '\t') {
-        i++;
-        /* Skip whitespace between interpreter and arg */
-        while (i < FAKECHROOT_PATH_MAX && (ctx->hashbang[i] == ' ' || ctx->hashbang[i] == '\t')) {
-            i++;
-        }
-        /* If there's content before newline, that's the single arg */
-        if (i < FAKECHROOT_PATH_MAX && ctx->hashbang[i] != '\0' && ctx->hashbang[i] != '\n') {
-            *shebangArg = &ctx->hashbang[i];
-            /* Find end of arg (newline or null) and terminate */
-            while (i < FAKECHROOT_PATH_MAX && ctx->hashbang[i] != '\0' && ctx->hashbang[i] != '\n') {
-                i++;
-            }
-            ctx->hashbang[i] = '\0';
-            debug("exec: shebangArg=\"%s\"", *shebangArg);
-        }
+    /* Get optional shebang arg (rest of line until newline - kernel behavior) */
+    while (*saveptr == ' ' || *saveptr == '\t') saveptr++;
+
+    if (*saveptr && *saveptr != '\n') {
+        *shebangArg = saveptr;
+        char *nl = strchr(saveptr, '\n');
+        if (nl) *nl = '\0';
+        debug("exec: shebangArg=\"%s\"", *shebangArg);
+    } else {
+        *shebangArg = NULL;
     }
 
     return originalInterp;
