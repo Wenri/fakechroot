@@ -26,6 +26,7 @@
 #include <sys/types.h>
 #include <stddef.h>
 #include "libfakechroot.h"
+#include "android-config.h"
 
 
 wrapper(readlinkat, ssize_t, (int dirfd, const char * path, char * buf, size_t bufsiz))

@@ -23,6 +23,7 @@
 #include <sys/types.h>
 #include <stddef.h>
 #include "libfakechroot.h"
+#include "android-config.h"
 
 
 wrapper(readlink, READLINK_TYPE_RETURN, (const char * path, char * buf, READLINK_TYPE_ARG3(bufsiz)))

@@ -23,6 +23,7 @@
 #include <string.h>
 #include "libfakechroot.h"
 #include "getcwd_real.h"
+#include "android-config.h"
 
 
 wrapper(chdir, int, (const char * path))
