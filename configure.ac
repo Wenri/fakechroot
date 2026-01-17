@@ -29,6 +29,7 @@ EXTRA_CFLAGS="$EXTRA_CFLAGS -fvisibility=hidden"
 
 # Optimization flags
 EXTRA_CFLAGS="$EXTRA_CFLAGS -fno-semantic-interposition -foptimize-sibling-calls -fmerge-all-constants"
+EXTRA_CFLAGS="$EXTRA_CFLAGS -finline-functions -fomit-frame-pointer -fstrict-aliasing"
 EXTRA_LDFLAGS="$EXTRA_LDFLAGS -Wl,--strip-all -Wl,-Bsymbolic"
 
 # C toolchain
