@@ -102,15 +102,28 @@ extern void fakechroot_install_sigsys_handler(void);
  *
  * The execve wrapper puts the original filename in argv[0] specifically
  * so we can read it here and set the process name correctly.
+ *
+ * Only runs if /proc/self/exe shows we're launched via ld.so.
  */
 static void fakechroot_set_process_name(void)
 {
+    char exebuf[256];
     char buf[4096];
     int fd;
     ssize_t n;
     const char *name;
 
-    fd = open("/proc/self/cmdline", O_RDONLY);
+    /* Check if we're actually running under ld.so */
+    n = nextcall(readlink)("/proc/self/exe", exebuf, sizeof(exebuf) - 1);
+    if (n <= 0)
+        return;
+    exebuf[n] = '\0';
+
+    /* Only proceed if exe is ld-linux (the dynamic linker) */
+    if (strstr(exebuf, "ld-linux") == NULL)
+        return;
+
+    fd = nextcall(open)("/proc/self/cmdline", O_RDONLY);
     if (fd < 0)
         return;
 
@@ -129,7 +142,7 @@ static void fakechroot_set_process_name(void)
     /* PR_SET_NAME truncates to 15 chars, which is fine */
     prctl(PR_SET_NAME, name, 0, 0, 0);
 
-    debug("fakechroot_set_process_name: set comm to \"%s\"", name);
+    debug("fakechroot_set_process_name: set comm to \"%s\" (exe=%s)", name, exebuf);
 }
 
 
