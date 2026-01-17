@@ -36,8 +36,10 @@
 
 #ifdef HAVE___ATTRIBUTE__VISIBILITY
 # define LOCAL __attribute__((visibility("hidden")))
+# define PUBLIC __attribute__((visibility("default")))
 #else
 # define LOCAL
+# define PUBLIC
 #endif
 
 #ifdef HAVE___ATTRIBUTE__CONSTRUCTOR
@@ -170,12 +172,12 @@
 #define wrapper(function, return_type, arguments) \
     wrapper_proto(function, return_type, arguments); \
     wrapper_decl(function); \
-    return_type function arguments
+    PUBLIC return_type function arguments
 
 #define wrapper_alias(function, return_type, arguments) \
     wrapper_proto_alias(function, return_type, arguments); \
     wrapper_decl(function); \
-    return_type wrapper_fn_name(function) arguments
+    PUBLIC return_type wrapper_fn_name(function) arguments
 
 #define nextcall(function) \
     ( \

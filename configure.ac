@@ -24,6 +24,9 @@ AS_IF([test "x$enable_lto" = xyes], [
     EXTRA_LDFLAGS="$EXTRA_LDFLAGS -flto"
 ])
 
+# Hidden visibility by default - wrapper functions export explicitly
+EXTRA_CFLAGS="$EXTRA_CFLAGS -fvisibility=hidden"
+
 # C toolchain
 AM_PROG_AR
 AC_PROG_CC
