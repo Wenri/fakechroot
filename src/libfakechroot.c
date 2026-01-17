@@ -113,8 +113,15 @@ static void fakechroot_set_process_name(void)
     ssize_t n;
     const char *name;
 
+    /* Get real libc functions to bypass our wrappers */
+    ssize_t (*real_readlink)(const char *, char *, size_t) = dlsym(RTLD_NEXT, "readlink");
+    int (*real_open)(const char *, int, ...) = dlsym(RTLD_NEXT, "open");
+
+    if (!real_readlink || !real_open)
+        return;
+
     /* Check if we're actually running under ld.so */
-    n = nextcall(readlink)("/proc/self/exe", exebuf, sizeof(exebuf) - 1);
+    n = real_readlink("/proc/self/exe", exebuf, sizeof(exebuf) - 1);
     if (n <= 0)
         return;
     exebuf[n] = '\0';
@@ -123,7 +130,7 @@ static void fakechroot_set_process_name(void)
     if (strstr(exebuf, "ld-linux") == NULL)
         return;
 
-    fd = nextcall(open)("/proc/self/cmdline", O_RDONLY);
+    fd = real_open("/proc/self/cmdline", O_RDONLY);
     if (fd < 0)
         return;
 

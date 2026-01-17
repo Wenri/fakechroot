@@ -21,14 +21,31 @@
 #ifndef __LIBFAKECHROOT_H
 #define __LIBFAKECHROOT_H
 
-#include <errno.h>
-#include <limits.h>
+/* System headers needed for libc-symver.h type declarations */
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+#include <errno.h>
+#include <limits.h>
+#include <signal.h>
+#include <dlfcn.h>
+#include <link.h>
+#include <dirent.h>
+#include <glob.h>
+#include <spawn.h>
+#include <utime.h>
+#include <sys/stat.h>
+#include <sys/statfs.h>
+#include <sys/statvfs.h>
+#include <sys/socket.h>
+#include <sys/time.h>
+
+#include <config.h>
+#include "libc-symver.h"
 
 #include "rel2abs.h"
 #include "rel2absat.h"
-#include "android-config.h"
 
 
 #define debug fakechroot_debug
@@ -177,14 +194,18 @@
     wrapper_decl(function); \
     return_type wrapper_fn_name(function) arguments
 
+/* nextcall: dispatch to versioned symbol or dlsym fallback
+ *
+ * When symver is available: __real_xxx is extern function (always non-NULL)
+ * When symver unavailable: __real_xxx aliases wrapper_decl.nextfunc (may be NULL)
+ *
+ * The ternary handles both: functions are non-NULL, .nextfunc loads if needed
+ * Cast both branches to void* for ternary compatibility, then cast result to fn type
+ */
 #define nextcall(function) \
-    ( \
-      (fakechroot_##function##_fn_t)( \
-          fakechroot_##function##_wrapper_decl.nextfunc ? \
-          fakechroot_##function##_wrapper_decl.nextfunc : \
-          fakechroot_loadfunc(&fakechroot_##function##_wrapper_decl) \
-      ) \
-    )
+    ((fakechroot_##function##_fn_t)( \
+        __real_##function ? (void*)__real_##function : \
+        (void*)fakechroot_loadfunc(&fakechroot_##function##_wrapper_decl)))
 
 
 #ifdef __GNUC__

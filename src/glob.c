@@ -22,7 +22,6 @@
 
 #include <glob.h>
 #include "libfakechroot.h"
-#include "android-config.h"
 
 
 wrapper(glob, int, (const char * pattern, int flags, int (* errfunc) (const char *, int), glob_t * pglob))
