@@ -218,7 +218,7 @@ static int is_direct_exec_interp(const char *interp)
  * @param envbuf     Buffer for env strings (NULL for size calc only)
  * @return Buffer size needed/used (minimum 1 for empty VLA)
  */
-size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf)
+LOCAL size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf)
 {
     size_t total = 0;
     char *bufptr = envbuf;
@@ -304,7 +304,7 @@ size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf)
  *
  * This saves ~8KB of stack space per exec call.
  */
-exec_ctx_t exec_prepare(const char *filename)
+LOCAL exec_ctx_t exec_prepare(const char *filename)
 {
     exec_ctx_t ctx = {0};
     int file, i;
@@ -644,7 +644,7 @@ static void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const
  * For scripts: inner function sets newargv[0] = displayArgv0 (original interpreter),
  *              matching kernel behavior where scripts show interpreter name in ps.
  */
-void exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[], const char *filename)
+LOCAL void exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[], const char *filename)
 {
     switch (ctx->type) {
         case EXEC_TYPE_ELFLOADER_SCRIPT:

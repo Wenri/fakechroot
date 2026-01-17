@@ -65,7 +65,7 @@ typedef struct {
  * @param filename  Original filename (will be expanded)
  * @return Initialized execution context with type set
  */
-exec_ctx_t exec_prepare(const char *filename);
+LOCAL exec_ctx_t exec_prepare(const char *filename);
 
 /*
  * Build environment array with preserved variables.
@@ -78,7 +78,7 @@ exec_ctx_t exec_prepare(const char *filename);
  * @param envbuf     Buffer for preserved env strings (NULL for size calc only)
  * @return Buffer size needed/used (may be 0, caller should use size+1 for VLA)
  */
-size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf);
+LOCAL size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf);
 
 /*
  * Build argument vector for elfloader.
@@ -96,7 +96,7 @@ size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf);
  * @param argv     Original argument vector
  * @param filename Original filename passed to execve (before path expansion)
  */
-void exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[], const char *filename);
+LOCAL void exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[], const char *filename);
 
 /*
  * Get the executable path for the final exec call.

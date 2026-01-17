@@ -154,8 +154,8 @@ static void fakechroot_set_process_name(void)
 
 
 /* Bootstrap the library */
-void fakechroot_init (void) CONSTRUCTOR;
-void fakechroot_init (void)
+static void fakechroot_init (void) CONSTRUCTOR;
+static void fakechroot_init (void)
 {
     debug("fakechroot_init()");
     debug("FAKECHROOT_BASE=\"%s\"", ANDROID_BASE);
