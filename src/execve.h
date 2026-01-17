@@ -85,11 +85,18 @@ size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf);
  * Dispatches to appropriate builder based on file type (already detected in exec_prepare).
  * Only called for types that need argv transformation (ELFLOADER_*).
  *
+ * For ELF binaries, sets newargv[0] = filename (original unexpanded path) so that
+ * /proc/self/cmdline contains the original command for prctl(PR_SET_NAME).
+ *
+ * For scripts, newargv[0] = displayArgv0 (original interpreter from shebang),
+ * matching kernel behavior where scripts show interpreter name in ps.
+ *
  * @param ctx      Execution context (type already set by exec_prepare)
  * @param newargv  Argument array to populate
  * @param argv     Original argument vector
+ * @param filename Original filename passed to execve (before path expansion)
  */
-void exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[]);
+void exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[], const char *filename);
 
 /*
  * Get the executable path for the final exec call.

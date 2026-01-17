@@ -62,7 +62,7 @@ wrapper(posix_spawn, int, (pid_t* pid, const char * filename,
 
     /* Wrapped execution: build new argv with elfloader prefix */
     char *newargv[argc + EXEC_PREFIX_LEN + MAX_SHEBANG_ARGS + 1];
-    exec_build_argv(&ctx, newargv, argv);
+    exec_build_argv(&ctx, newargv, argv, filename);
 
     debug("nextcall(posix_spawn)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
           exec_get_path(&ctx), newargv[0], newargv[1], newargv[2], newargv[3]);

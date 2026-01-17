@@ -384,10 +384,12 @@ exec_ctx_t exec_prepare(const char *filename)
 /*
  * Build argument vector for ELF binary execution via elfloader.
  *
- * argv layout: [argv0, --argv0, argv0, filename, user_args...]
- * - First argv0 is ld.so's argv[0] (shows in ps/top as command name)
+ * argv layout: [filename, --argv0, argv0, expanded_path, user_args...]
+ * - filename is original unexpanded path (for /proc/self/cmdline → prctl)
  * - --argv0 + argv0 sets the program's argv[0] (for login shell detection)
- * - filename is the actual program to execute
+ * - expanded_path is the actual program to execute
+ *
+ * Note: newargv[0] is set by caller (exec_build_argv), we start from n=1.
  */
 static void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
 {
@@ -399,9 +401,8 @@ static void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const ar
     }
     newargv[n] = NULL;
 
-    /* Set up elfloader arguments */
-    n = 0;
-    newargv[n++] = argv[0];              /* ld.so's argv[0]: command name for ps */
+    /* Set up elfloader arguments starting from [1] - caller sets [0] */
+    n = 1;
     newargv[n++] = ANDROID_ARGV0_OPT;    /* --argv0 */
     newargv[n++] = argv[0];              /* program's argv[0] */
     newargv[n] = ctx->expandedFilename;  /* program path */
@@ -638,15 +639,22 @@ static void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const
  * Build argument vector for elfloader.
  * Dispatches to appropriate builder based on file type (already detected in exec_prepare).
  * Only called for types that need argv transformation.
+ *
+ * For ELF: sets newargv[0] = filename (original unexpanded path) for /proc/self/cmdline.
+ * For scripts: inner function sets newargv[0] = displayArgv0 (original interpreter),
+ *              matching kernel behavior where scripts show interpreter name in ps.
  */
-void exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
+void exec_build_argv(exec_ctx_t *ctx, char **newargv, char * const argv[], const char *filename)
 {
     switch (ctx->type) {
         case EXEC_TYPE_ELFLOADER_SCRIPT:
+            /* Script: inner function sets newargv[0] = displayArgv0 (matches kernel) */
             exec_build_script_argv(ctx, newargv, argv);
             break;
         case EXEC_TYPE_ELFLOADER_ELF:
         default:
+            /* ELF: set newargv[0] = original filename for /proc/self/cmdline */
+            newargv[0] = (char *)filename;
             exec_build_elf_argv(ctx, newargv, argv);
             break;
     }
@@ -684,7 +692,7 @@ wrapper(execve, int, (const char * filename, char * const argv [], char * const 
 
     /* Wrapped execution: build new argv with elfloader prefix */
     char *newargv[argc + EXEC_PREFIX_LEN + MAX_SHEBANG_ARGS + 1];
-    exec_build_argv(&ctx, newargv, argv);
+    exec_build_argv(&ctx, newargv, argv, filename);
 
     debug("nextcall(execve)(\"%s\", {\"%s\", \"%s\", \"%s\", \"%s\", ...}, ...)",
           exec_get_path(&ctx), newargv[0], newargv[1], newargv[2], newargv[3]);

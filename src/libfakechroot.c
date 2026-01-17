@@ -33,6 +33,8 @@
 #include <stdio.h>
 #include <pwd.h>
 #include <dlfcn.h>
+#include <fcntl.h>
+#include <sys/prctl.h>
 #include "setenv.h"
 #include "libfakechroot.h"
 #include "getcwd_real.h"
@@ -93,6 +95,44 @@ extern void fakechroot_install_sigsys_handler(void);
 #endif
 
 
+/*
+ * Set process name from /proc/self/cmdline for correct ps/top display.
+ * When running under ld.so, kernel sets comm to "ld-linux-aarch64.so.1".
+ * We read the original argv[0] from cmdline and use prctl to fix it.
+ *
+ * The execve wrapper puts the original filename in argv[0] specifically
+ * so we can read it here and set the process name correctly.
+ */
+static void fakechroot_set_process_name(void)
+{
+    char buf[4096];
+    int fd;
+    ssize_t n;
+    const char *name;
+
+    fd = open("/proc/self/cmdline", O_RDONLY);
+    if (fd < 0)
+        return;
+
+    n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+
+    if (n <= 0)
+        return;
+
+    buf[n] = '\0';
+
+    /* First null-terminated string is original argv[0] */
+    name = strrchr(buf, '/');
+    name = name ? name + 1 : buf;
+
+    /* PR_SET_NAME truncates to 15 chars, which is fine */
+    prctl(PR_SET_NAME, name, 0, 0, 0);
+
+    debug("fakechroot_set_process_name: set comm to \"%s\"", name);
+}
+
+
 /* Bootstrap the library */
 void fakechroot_init (void) CONSTRUCTOR;
 void fakechroot_init (void)
@@ -129,6 +169,9 @@ void fakechroot_init (void)
                 i = j + 1;
             }
         }
+
+        /* Set process name for ps/top display */
+        fakechroot_set_process_name();
     }
 }
 
