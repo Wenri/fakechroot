@@ -14,6 +14,16 @@ AC_ARG_VAR([V], [Verbose output])
 AC_ARG_VAR([EXTRA_CFLAGS], [Extra C compiler flags])
 AC_ARG_VAR([EXTRA_LDFLAGS], [Extra linker flags])
 
+# --enable-lto
+AC_ARG_ENABLE([lto],
+    [AS_HELP_STRING([--enable-lto], [enable link-time optimization @<:@default=no@:>@])],
+    [enable_lto=$enableval],
+    [enable_lto=no])
+AS_IF([test "x$enable_lto" = xyes], [
+    EXTRA_CFLAGS="$EXTRA_CFLAGS -flto"
+    EXTRA_LDFLAGS="$EXTRA_LDFLAGS -flto"
+])
+
 # C toolchain
 AM_PROG_AR
 AC_PROG_CC
