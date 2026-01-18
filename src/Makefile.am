@@ -164,6 +164,7 @@ libfakechroot_la_SOURCES = \
     strlcpy.h \
     symlink.c \
     symlinkat.c \
+    syscall.c \
     system.c \
     tempnam.c \
     tmpnam.c \

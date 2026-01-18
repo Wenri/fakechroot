@@ -323,6 +323,7 @@ AC_CHECK_FUNCS(m4_normalize([
     strlcpy
     symlink
     symlinkat
+    syscall
     system
     tempnam
     tmpnam
