@@ -38,7 +38,12 @@
 #include <stdarg.h>
 #include <sys/stat.h>
 #include <string.h>
+#include <signal.h>
+#include <errno.h>
 #include "libfakechroot.h"
+
+/* Declare the saved handler from sigaction.c */
+extern struct sigaction saved_sigsys_handler;
 
 
 wrapper(syscall, long, (long number, ...))
@@ -136,6 +141,69 @@ wrapper(syscall, long, (long number, ...))
         debug("syscall(SYS_mkdirat, %d, \"%s\", %o)", dirfd, pathname, mode);
         expand_chroot_path_at(dirfd, pathname);
         return nextcall(syscall)(number, dirfd, pathname, mode);
+    }
+#endif
+
+#ifdef SYS_close_range
+    /*
+     * Intercept close_range syscall - blocked by Android seccomp.
+     * Return ENOSYS so callers fall back to closing FDs one by one.
+     */
+    case SYS_close_range: {
+        unsigned int first = va_arg(ap, unsigned int);
+        unsigned int last = va_arg(ap, unsigned int);
+        unsigned int flags = va_arg(ap, unsigned int);
+        va_end(ap);
+        debug("syscall(SYS_close_range, %u, %u, %u) -> ENOSYS", first, last, flags);
+        errno = ENOSYS;
+        return -1;
+    }
+#endif
+
+#ifdef SYS_rt_sigaction
+    /*
+     * Intercept rt_sigaction syscall to protect our SIGSYS handler.
+     *
+     * Python's subprocess module and other programs reset signal handlers
+     * to SIG_DFL before exec() using raw syscall() instead of sigaction().
+     * This bypasses our sigaction() wrapper.
+     *
+     * When SIGSYS is reset to SIG_DFL and a seccomp-blocked syscall is made,
+     * the process dies instead of using our handler that returns ENOSYS.
+     *
+     * Solution: Intercept attempts to reset SIGSYS and keep our handler.
+     */
+    case SYS_rt_sigaction: {
+        int signum = va_arg(ap, int);
+        struct sigaction *act = va_arg(ap, struct sigaction *);
+        struct sigaction *oldact = va_arg(ap, struct sigaction *);
+        size_t sigsetsize = va_arg(ap, size_t);
+        va_end(ap);
+
+        /* Only intercept SIGSYS */
+        if (signum != SIGSYS) {
+            return nextcall(syscall)(number, signum, act, oldact, sigsetsize);
+        }
+
+        debug("syscall(SYS_rt_sigaction, SIGSYS, %p, %p, %zu)", act, oldact, sigsetsize);
+
+        /* Return the saved handler if requested */
+        if (oldact != NULL) {
+            memcpy(oldact, &saved_sigsys_handler, sizeof(struct sigaction));
+        }
+
+        /* If just querying (act == NULL), we're done */
+        if (act == NULL) {
+            return 0;
+        }
+
+        /* Someone is trying to change SIGSYS handler */
+        /* Save their handler for chaining but don't actually install it */
+        debug("syscall: blocking SIGSYS handler change to %p", act->sa_handler);
+        memcpy(&saved_sigsys_handler, act, sizeof(struct sigaction));
+
+        /* Return success without actually changing the handler */
+        return 0;
     }
 #endif
 

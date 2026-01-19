@@ -36,6 +36,7 @@ libfakechroot_la_SOURCES = \
     chmod.c \
     chown.c \
     chroot.c \
+    close_range.c \
     clearenv.c \
     connect.c \
     creat.c \

@@ -210,6 +210,7 @@ AC_CHECK_FUNCS(m4_normalize([
     chmod
     chown
     chroot
+    close_range
     clearenv
     connect
     creat

@@ -171,7 +171,8 @@ static int is_blocked_syscall(int syscall_nr)
 
 /* Saved SIGSYS handler from other code (e.g., Go runtime) */
 /* Initialized when we install our handler, so always valid */
-static struct sigaction saved_sigsys_handler;
+/* Not static - accessed from syscall.c to intercept raw syscall() */
+struct sigaction saved_sigsys_handler;
 
 /*
  * SIGSYS handler for Android seccomp bypass.
