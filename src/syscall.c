@@ -43,6 +43,7 @@
 #include <fcntl.h>        /* AT_FDCWD, AT_REMOVEDIR */
 #include <sys/socket.h>   /* socket types */
 #include "libfakechroot.h"
+#include "android_syscalls.h"
 
 /* Declare the saved handler from sigaction.c */
 extern struct sigaction saved_sigsys_handler;
@@ -299,244 +300,9 @@ wrapper(syscall, long, (long number, ...))
     }
 #endif
 
-    /* --- Category 2: Return 0 (uid/gid changes - no-op on Android) --- */
-
-#ifdef SYS_setuid
-    case SYS_setuid:
-#endif
-#ifdef SYS_setuid32
-    case SYS_setuid32:
-#endif
-#ifdef SYS_setgid
-    case SYS_setgid:
-#endif
-#ifdef SYS_setgid32
-    case SYS_setgid32:
-#endif
-#ifdef SYS_setreuid
-    case SYS_setreuid:
-#endif
-#ifdef SYS_setreuid32
-    case SYS_setreuid32:
-#endif
-#ifdef SYS_setregid
-    case SYS_setregid:
-#endif
-#ifdef SYS_setregid32
-    case SYS_setregid32:
-#endif
-#ifdef SYS_setresuid
-    case SYS_setresuid:
-#endif
-#ifdef SYS_setresuid32
-    case SYS_setresuid32:
-#endif
-#ifdef SYS_setresgid
-    case SYS_setresgid:
-#endif
-#ifdef SYS_setresgid32
-    case SYS_setresgid32:
-#endif
-#ifdef SYS_setfsuid
-    case SYS_setfsuid:
-#endif
-#ifdef SYS_setfsuid32
-    case SYS_setfsuid32:
-#endif
-#ifdef SYS_setfsgid
-    case SYS_setfsgid:
-#endif
-#ifdef SYS_setfsgid32
-    case SYS_setfsgid32:
-#endif
-    {
-        va_end(ap);
-        debug("syscall(%ld) -> 0 (uid/gid no-op)", number);
-        return 0;
-    }
-
-    /* --- Category 3: Return ENOSYS (blocked by Android seccomp) --- */
-
-    /* Filesystem */
-#ifdef SYS_mount
-    case SYS_mount:
-#endif
-#ifdef SYS_chroot
-    case SYS_chroot:
-#endif
-    /* IPC - POSIX MQ */
-#ifdef SYS_mq_open
-    case SYS_mq_open:
-#endif
-    /* IPC - SysV Semaphores */
-#ifdef SYS_semget
-    case SYS_semget:
-#endif
-#ifdef SYS_semctl
-    case SYS_semctl:
-#endif
-#ifdef SYS_semop
-    case SYS_semop:
-#endif
-#ifdef SYS_semtimedop
-    case SYS_semtimedop:
-#endif
-    /* IPC - SysV Messages */
-#ifdef SYS_msgctl
-    case SYS_msgctl:
-#endif
-#ifdef SYS_msgget
-    case SYS_msgget:
-#endif
-#ifdef SYS_msgrcv
-    case SYS_msgrcv:
-#endif
-#ifdef SYS_msgsnd
-    case SYS_msgsnd:
-#endif
-    /* IPC - SysV Shared Memory */
-#ifdef SYS_shmget
-    case SYS_shmget:
-#endif
-#ifdef SYS_shmctl
-    case SYS_shmctl:
-#endif
-#ifdef SYS_shmat
-    case SYS_shmat:
-#endif
-#ifdef SYS_shmdt
-    case SYS_shmdt:
-#endif
-    /* Process/Thread */
-#ifdef SYS_set_robust_list
-    case SYS_set_robust_list:
-#endif
-#ifdef SYS_get_robust_list
-    case SYS_get_robust_list:
-#endif
-#ifdef SYS_ptrace
-    case SYS_ptrace:
-#endif
-#ifdef SYS_kcmp
-    case SYS_kcmp:
-#endif
-#ifdef SYS_rseq
-    case SYS_rseq:
-#endif
-#ifdef SYS_clone3
-    case SYS_clone3:
-#endif
-    /* Memory - NUMA */
-#ifdef SYS_mbind
-    case SYS_mbind:
-#endif
-#ifdef SYS_get_mempolicy
-    case SYS_get_mempolicy:
-#endif
-#ifdef SYS_set_mempolicy
-    case SYS_set_mempolicy:
-#endif
-    /* Memory - Protection Keys */
-#ifdef SYS_pkey_mprotect
-    case SYS_pkey_mprotect:
-#endif
-#ifdef SYS_pkey_alloc
-    case SYS_pkey_alloc:
-#endif
-#ifdef SYS_pkey_free
-    case SYS_pkey_free:
-#endif
-    /* Security - Keyring */
-#ifdef SYS_add_key
-    case SYS_add_key:
-#endif
-#ifdef SYS_request_key
-    case SYS_request_key:
-#endif
-#ifdef SYS_keyctl
-    case SYS_keyctl:
-#endif
-    /* Security - Sandboxing */
-#ifdef SYS_bpf
-    case SYS_bpf:
-#endif
-#ifdef SYS_landlock_create_ruleset
-    case SYS_landlock_create_ruleset:
-#endif
-#ifdef SYS_landlock_add_rule
-    case SYS_landlock_add_rule:
-#endif
-#ifdef SYS_landlock_restrict_self
-    case SYS_landlock_restrict_self:
-#endif
-    /* File Notification */
-#ifdef SYS_fanotify_init
-    case SYS_fanotify_init:
-#endif
-#ifdef SYS_fanotify_mark
-    case SYS_fanotify_mark:
-#endif
-    /* File Handles */
-#ifdef SYS_name_to_handle_at
-    case SYS_name_to_handle_at:
-#endif
-#ifdef SYS_open_by_handle_at
-    case SYS_open_by_handle_at:
-#endif
-    /* Async I/O */
-#ifdef SYS_io_pgetevents
-    case SYS_io_pgetevents:
-#endif
-#ifdef SYS_io_uring_setup
-    case SYS_io_uring_setup:
-#endif
-#ifdef SYS_io_uring_enter
-    case SYS_io_uring_enter:
-#endif
-#ifdef SYS_io_uring_register
-    case SYS_io_uring_register:
-#endif
-    /* Modules */
-#ifdef SYS_init_module
-    case SYS_init_module:
-#endif
-#ifdef SYS_delete_module
-    case SYS_delete_module:
-#endif
-#ifdef SYS_finit_module
-    case SYS_finit_module:
-#endif
-    /* Newer syscalls - commonly blocked */
-#ifdef SYS_openat2
-    case SYS_openat2:
-#endif
-#ifdef SYS_close_range
-    case SYS_close_range:
-#endif
-#ifdef SYS_epoll_pwait2
-    case SYS_epoll_pwait2:
-#endif
-#ifdef SYS_mount_setattr
-    case SYS_mount_setattr:
-#endif
-#ifdef SYS_futex_waitv
-    case SYS_futex_waitv:
-#endif
-#ifdef SYS_process_madvise
-    case SYS_process_madvise:
-#endif
-#ifdef SYS_process_mrelease
-    case SYS_process_mrelease:
-#endif
-#ifdef SYS_pidfd_send_signal
-    case SYS_pidfd_send_signal:
-#endif
-    {
-        va_end(ap);
-        debug("syscall(%ld) -> ENOSYS (blocked)", number);
-        errno = ENOSYS;
-        return -1;
-    }
+    /* --- Category 2 & 3: Use shared functions from android_syscalls.h --- */
+    /* Category 2 (uid/gid no-ops) and Category 3 (blocked syscalls) are now */
+    /* handled in the default case using is_noop_syscall()/is_blocked_syscall() */
 
 #ifdef SYS_rt_sigaction
     /*
@@ -586,6 +352,21 @@ wrapper(syscall, long, (long number, ...))
 #endif
 
     default: {
+        /* Category 2: uid/gid syscalls return 0 (no-op on Android) */
+        if (is_noop_syscall(number)) {
+            va_end(ap);
+            debug("syscall(%ld) -> 0 (uid/gid no-op)", number);
+            return 0;
+        }
+
+        /* Category 3: blocked syscalls return ENOSYS */
+        if (is_blocked_syscall(number)) {
+            va_end(ap);
+            debug("syscall(%ld) -> ENOSYS (blocked)", number);
+            errno = ENOSYS;
+            return -1;
+        }
+
         /* Pass through all other syscalls with up to 6 args.
          * This matches glibc's syscall() implementation which also
          * extracts exactly 6 va_arg unconditionally. */
