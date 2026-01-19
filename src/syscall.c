@@ -44,6 +44,7 @@
 #include <sys/socket.h>   /* socket types */
 #include "libfakechroot.h"
 #include "android_syscalls.h"
+#include "syscall_macros.h"
 
 /* Declare the saved handler from sigaction.c */
 extern struct sigaction saved_sigsys_handler;
@@ -57,247 +58,84 @@ wrapper(syscall, long, (long number, ...))
     va_start(ap, number);
 
     switch (number) {
-#ifdef SYS_statx
-    case SYS_statx: {
-        int dirfd = va_arg(ap, int);
-        const char *pathname = va_arg(ap, const char *);
-        int flags = va_arg(ap, int);
-        unsigned int mask = va_arg(ap, unsigned int);
-        void *statxbuf = va_arg(ap, void *);
-        va_end(ap);
-        debug("syscall(SYS_statx, %d, \"%s\", %d, %u, %p)", dirfd, pathname, flags, mask, statxbuf);
-        expand_chroot_path_at(dirfd, pathname);
-        return nextcall(syscall)(number, dirfd, pathname, flags, mask, statxbuf);
-    }
-#endif
 
-#ifdef SYS_openat
-    case SYS_openat: {
-        int dirfd = va_arg(ap, int);
-        const char *pathname = va_arg(ap, const char *);
-        int flags = va_arg(ap, int);
-        int mode = va_arg(ap, int);
-        va_end(ap);
-        debug("syscall(SYS_openat, %d, \"%s\", %d, %o)", dirfd, pathname, flags, mode);
-        expand_chroot_path_at(dirfd, pathname);
-        return nextcall(syscall)(number, dirfd, pathname, flags, mode);
-    }
-#endif
-
-#ifdef SYS_faccessat
-    case SYS_faccessat: {
-        int dirfd = va_arg(ap, int);
-        const char *pathname = va_arg(ap, const char *);
-        int mode = va_arg(ap, int);
-        int flags = va_arg(ap, int);
-        va_end(ap);
-        debug("syscall(SYS_faccessat, %d, \"%s\", %d, %d)", dirfd, pathname, mode, flags);
-        expand_chroot_path_at(dirfd, pathname);
-        return nextcall(syscall)(number, dirfd, pathname, mode, flags);
-    }
-#endif
-
-#ifdef SYS_newfstatat
-    case SYS_newfstatat: {
-        int dirfd = va_arg(ap, int);
-        const char *pathname = va_arg(ap, const char *);
-        void *statbuf = va_arg(ap, void *);
-        int flags = va_arg(ap, int);
-        va_end(ap);
-        debug("syscall(SYS_newfstatat, %d, \"%s\", %p, %d)", dirfd, pathname, statbuf, flags);
-        expand_chroot_path_at(dirfd, pathname);
-        return nextcall(syscall)(number, dirfd, pathname, statbuf, flags);
-    }
-#endif
-
-#ifdef SYS_readlinkat
-    case SYS_readlinkat: {
-        int dirfd = va_arg(ap, int);
-        const char *pathname = va_arg(ap, const char *);
-        char *buf = va_arg(ap, char *);
-        size_t bufsiz = va_arg(ap, size_t);
-        va_end(ap);
-        debug("syscall(SYS_readlinkat, %d, \"%s\", %p, %zu)", dirfd, pathname, buf, bufsiz);
-        expand_chroot_path_at(dirfd, pathname);
-        return nextcall(syscall)(number, dirfd, pathname, buf, bufsiz);
-    }
-#endif
+    /* ================================================================
+     * Pass-through AT syscalls with path expansion
+     * These use macros from syscall_macros.h to reduce boilerplate
+     * ================================================================ */
 
 #ifdef SYS_unlinkat
-    case SYS_unlinkat: {
-        int dirfd = va_arg(ap, int);
-        const char *pathname = va_arg(ap, const char *);
-        int flags = va_arg(ap, int);
-        va_end(ap);
-        debug("syscall(SYS_unlinkat, %d, \"%s\", %d)", dirfd, pathname, flags);
-        expand_chroot_path_at(dirfd, pathname);
-        return nextcall(syscall)(number, dirfd, pathname, flags);
-    }
+    AT_PASSTHROUGH_1(SYS_unlinkat)
 #endif
-
 #ifdef SYS_mkdirat
-    case SYS_mkdirat: {
-        int dirfd = va_arg(ap, int);
-        const char *pathname = va_arg(ap, const char *);
-        int mode = va_arg(ap, int);
-        va_end(ap);
-        debug("syscall(SYS_mkdirat, %d, \"%s\", %o)", dirfd, pathname, mode);
-        expand_chroot_path_at(dirfd, pathname);
-        return nextcall(syscall)(number, dirfd, pathname, mode);
-    }
+    AT_PASSTHROUGH_1(SYS_mkdirat)
+#endif
+#ifdef SYS_faccessat
+    AT_PASSTHROUGH_2(SYS_faccessat)
+#endif
+#ifdef SYS_openat
+    AT_PASSTHROUGH_2(SYS_openat)
+#endif
+#ifdef SYS_newfstatat
+    AT_PASSTHROUGH_2(SYS_newfstatat)
+#endif
+#ifdef SYS_readlinkat
+    AT_PASSTHROUGH_2(SYS_readlinkat)
+#endif
+#ifdef SYS_statx
+    AT_PASSTHROUGH_3(SYS_statx)
 #endif
 
     /* ================================================================
      * Android seccomp bypass - redirect blocked syscalls to alternatives
      * Based on glibc's fakesyscall.json from Termux patches
+     * These use macros from syscall_macros.h to reduce boilerplate
      * ================================================================ */
 
     /* --- Category 1: Redirect to replacement syscalls --- */
 
+    /* AT redirects: syscall(dirfd, path, arg) -> target(dirfd, path, arg, extra) */
 #ifdef SYS_faccessat2
-    case SYS_faccessat2: {
-        /* faccessat2(dirfd, path, mode, flags) -> faccessat(dirfd, path, mode, 0) */
-        int dirfd = va_arg(ap, int);
-        const char *pathname = va_arg(ap, const char *);
-        int mode = va_arg(ap, int);
-        va_end(ap);
-        debug("syscall(SYS_faccessat2, %d, \"%s\", %d) -> faccessat", dirfd, pathname, mode);
-        expand_chroot_path_at(dirfd, pathname);
-        return nextcall(syscall)(SYS_faccessat, dirfd, pathname, mode, 0);
-    }
+    AT_REDIRECT_1(SYS_faccessat2, SYS_faccessat, 0)
 #endif
-
-#ifdef SYS_chmod
-    case SYS_chmod: {
-        /* chmod(path, mode) -> fchmodat(AT_FDCWD, path, mode, 0) */
-        const char *pathname = va_arg(ap, const char *);
-        mode_t mode = va_arg(ap, mode_t);
-        va_end(ap);
-        debug("syscall(SYS_chmod, \"%s\", %o) -> fchmodat", pathname, mode);
-        expand_chroot_path(pathname);
-        return nextcall(syscall)(SYS_fchmodat, AT_FDCWD, pathname, mode, 0);
-    }
-#endif
-
 #ifdef SYS_fchmodat2
-    case SYS_fchmodat2: {
-        /* fchmodat2(dirfd, path, mode, flags) -> fchmodat(dirfd, path, mode, 0) */
-        int dirfd = va_arg(ap, int);
-        const char *pathname = va_arg(ap, const char *);
-        mode_t mode = va_arg(ap, mode_t);
-        va_end(ap);
-        debug("syscall(SYS_fchmodat2, %d, \"%s\", %o) -> fchmodat", dirfd, pathname, mode);
-        expand_chroot_path_at(dirfd, pathname);
-        return nextcall(syscall)(SYS_fchmodat, dirfd, pathname, mode, 0);
-    }
+    AT_REDIRECT_1(SYS_fchmodat2, SYS_fchmodat, 0)
 #endif
 
+    /* Path redirects: syscall(path, args) -> target(AT_FDCWD, path, args, extra) */
+#ifdef SYS_chmod
+    PATH_REDIRECT_1(SYS_chmod, SYS_fchmodat, 0)
+#endif
 #ifdef SYS_chown
-    case SYS_chown: {
-        /* chown(path, uid, gid) -> fchownat(AT_FDCWD, path, uid, gid, 0) */
-        const char *pathname = va_arg(ap, const char *);
-        uid_t owner = va_arg(ap, uid_t);
-        gid_t group = va_arg(ap, gid_t);
-        va_end(ap);
-        debug("syscall(SYS_chown, \"%s\", %d, %d) -> fchownat", pathname, owner, group);
-        expand_chroot_path(pathname);
-        return nextcall(syscall)(SYS_fchownat, AT_FDCWD, pathname, owner, group, 0);
-    }
+    PATH_REDIRECT_2(SYS_chown, SYS_fchownat, 0)
 #endif
-
 #ifdef SYS_chown32
-    case SYS_chown32: {
-        const char *pathname = va_arg(ap, const char *);
-        uid_t owner = va_arg(ap, uid_t);
-        gid_t group = va_arg(ap, gid_t);
-        va_end(ap);
-        debug("syscall(SYS_chown32) -> fchownat");
-        expand_chroot_path(pathname);
-        return nextcall(syscall)(SYS_fchownat, AT_FDCWD, pathname, owner, group, 0);
-    }
+    PATH_REDIRECT_2(SYS_chown32, SYS_fchownat, 0)
 #endif
-
-#ifdef SYS_accept
-    case SYS_accept: {
-        /* accept(sockfd, addr, addrlen) -> accept4(sockfd, addr, addrlen, 0) */
-        int sockfd = va_arg(ap, int);
-        void *addr = va_arg(ap, void *);
-        void *addrlen = va_arg(ap, void *);
-        va_end(ap);
-        debug("syscall(SYS_accept) -> accept4");
-        return nextcall(syscall)(SYS_accept4, sockfd, addr, addrlen, 0);
-    }
-#endif
-
-#ifdef SYS_recv
-    case SYS_recv: {
-        /* recv(fd, buf, len, flags) -> recvfrom(fd, buf, len, flags, NULL, NULL) */
-        int sockfd = va_arg(ap, int);
-        void *buf = va_arg(ap, void *);
-        size_t len = va_arg(ap, size_t);
-        int flags = va_arg(ap, int);
-        va_end(ap);
-        debug("syscall(SYS_recv) -> recvfrom");
-        return nextcall(syscall)(SYS_recvfrom, sockfd, buf, len, flags, NULL, NULL);
-    }
-#endif
-
-#ifdef SYS_send
-    case SYS_send: {
-        /* send(fd, buf, len, flags) -> sendto(fd, buf, len, flags, NULL, 0) */
-        int sockfd = va_arg(ap, int);
-        const void *buf = va_arg(ap, const void *);
-        size_t len = va_arg(ap, size_t);
-        int flags = va_arg(ap, int);
-        va_end(ap);
-        debug("syscall(SYS_send) -> sendto");
-        return nextcall(syscall)(SYS_sendto, sockfd, buf, len, flags, NULL, 0);
-    }
-#endif
-
-#ifdef SYS_symlink
-    case SYS_symlink: {
-        /* symlink(target, linkpath) -> symlinkat(target, AT_FDCWD, linkpath) */
-        const char *target = va_arg(ap, const char *);
-        const char *linkpath = va_arg(ap, const char *);
-        va_end(ap);
-        debug("syscall(SYS_symlink) -> symlinkat");
-        expand_chroot_path(linkpath);
-        return nextcall(syscall)(SYS_symlinkat, target, AT_FDCWD, linkpath);
-    }
-#endif
-
-#ifdef SYS_link
-    case SYS_link: {
-        /* link(oldpath, newpath) -> linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0) */
-        const char *oldpath = va_arg(ap, const char *);
-        const char *newpath = va_arg(ap, const char *);
-        va_end(ap);
-        debug("syscall(SYS_link) -> linkat");
-        expand_chroot_path(oldpath);
-        expand_chroot_path(newpath);
-        return nextcall(syscall)(SYS_linkat, AT_FDCWD, oldpath, AT_FDCWD, newpath, 0);
-    }
-#endif
-
 #ifdef SYS_rmdir
-    case SYS_rmdir: {
-        /* rmdir(path) -> unlinkat(AT_FDCWD, path, AT_REMOVEDIR) */
-        const char *pathname = va_arg(ap, const char *);
-        va_end(ap);
-        debug("syscall(SYS_rmdir) -> unlinkat");
-        expand_chroot_path(pathname);
-        return nextcall(syscall)(SYS_unlinkat, AT_FDCWD, pathname, AT_REMOVEDIR);
-    }
+    PATH_REDIRECT_0(SYS_rmdir, SYS_unlinkat, AT_REMOVEDIR)
 #endif
 
+    /* Non-path redirects: syscall(args) -> target(args, extra) */
+#ifdef SYS_accept
+    REDIRECT_3(SYS_accept, SYS_accept4, 0)
+#endif
+#ifdef SYS_recv
+    REDIRECT_4_2(SYS_recv, SYS_recvfrom, NULL, NULL)
+#endif
+#ifdef SYS_send
+    REDIRECT_4_2(SYS_send, SYS_sendto, NULL, 0)
+#endif
 #ifdef SYS_getpgrp
-    case SYS_getpgrp: {
-        /* getpgrp() -> getpgid(0) */
-        va_end(ap);
-        debug("syscall(SYS_getpgrp) -> getpgid(0)");
-        return nextcall(syscall)(SYS_getpgid, 0);
-    }
+    REDIRECT_0(SYS_getpgrp, SYS_getpgid, 0)
+#endif
+
+    /* Special cases: symlink/link with multiple paths */
+#ifdef SYS_symlink
+    SYMLINK_REDIRECT(SYS_symlink, SYS_symlinkat)
+#endif
+#ifdef SYS_link
+    LINK_REDIRECT(SYS_link, SYS_linkat)
 #endif
 
     /* --- Category 2 & 3: Use shared functions from android_syscalls.h --- */
@@ -307,15 +145,7 @@ wrapper(syscall, long, (long number, ...))
 #ifdef SYS_rt_sigaction
     /*
      * Intercept rt_sigaction syscall to protect our SIGSYS handler.
-     *
-     * Python's subprocess module and other programs reset signal handlers
-     * to SIG_DFL before exec() using raw syscall() instead of sigaction().
-     * This bypasses our sigaction() wrapper.
-     *
-     * When SIGSYS is reset to SIG_DFL and a seccomp-blocked syscall is made,
-     * the process dies instead of using our handler that returns ENOSYS.
-     *
-     * Solution: Intercept attempts to reset SIGSYS and keep our handler.
+     * Uses shared helper from android_syscalls.h (same logic as sigaction wrapper).
      */
     case SYS_rt_sigaction: {
         int signum = va_arg(ap, int);
@@ -324,30 +154,13 @@ wrapper(syscall, long, (long number, ...))
         size_t sigsetsize = va_arg(ap, size_t);
         va_end(ap);
 
-        /* Only intercept SIGSYS */
+        /* Only intercept SIGSYS - pass through all other signals */
         if (signum != SIGSYS) {
             return nextcall(syscall)(number, signum, act, oldact, sigsetsize);
         }
 
         debug("syscall(SYS_rt_sigaction, SIGSYS, %p, %p, %zu)", act, oldact, sigsetsize);
-
-        /* Return the saved handler if requested */
-        if (oldact != NULL) {
-            memcpy(oldact, &saved_sigsys_handler, sizeof(struct sigaction));
-        }
-
-        /* If just querying (act == NULL), we're done */
-        if (act == NULL) {
-            return 0;
-        }
-
-        /* Someone is trying to change SIGSYS handler */
-        /* Save their handler for chaining but don't actually install it */
-        debug("syscall: blocking SIGSYS handler change to %p", act->sa_handler);
-        memcpy(&saved_sigsys_handler, act, sizeof(struct sigaction));
-
-        /* Return success without actually changing the handler */
-        return 0;
+        return handle_sigsys_sigaction(act, oldact, &saved_sigsys_handler);
     }
 #endif
 

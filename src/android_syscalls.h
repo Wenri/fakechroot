@@ -32,6 +32,55 @@
 #define ANDROID_SYSCALLS_H
 
 #include <sys/syscall.h>
+#include <signal.h>
+#include <string.h>
+
+/*
+ * ============================================================================
+ * SIGSYS Handler Protection
+ * ============================================================================
+ *
+ * Helper for protecting our SIGSYS handler from being replaced.
+ * Used by both sigaction() wrapper and syscall(SYS_rt_sigaction) wrapper.
+ *
+ * Our SIGSYS handler intercepts seccomp-blocked syscalls and returns ENOSYS.
+ * Programs (like Go runtime, Python subprocess) may try to replace it with
+ * SIG_DFL, which would cause crashes instead of graceful ENOSYS fallback.
+ *
+ * Solution: Intercept sigaction calls for SIGSYS, save the requested handler
+ * for chaining, but don't actually install it - keep our handler active.
+ */
+
+/*
+ * Handle SIGSYS sigaction request.
+ * Returns 0 on success (always succeeds for SIGSYS).
+ *
+ * Parameters:
+ *   act          - New handler to install (or NULL to query)
+ *   oldact       - Where to store previous handler (or NULL)
+ *   saved_handler - Pointer to saved handler storage (for chaining)
+ */
+static inline int handle_sigsys_sigaction(
+    const struct sigaction *act,
+    struct sigaction *oldact,
+    struct sigaction *saved_handler)
+{
+    /* Return the previously saved handler if requested */
+    if (oldact != NULL) {
+        memcpy(oldact, saved_handler, sizeof(struct sigaction));
+    }
+
+    /* If just querying (act == NULL), we're done */
+    if (act == NULL) {
+        return 0;
+    }
+
+    /* Save their handler for chaining but don't actually install it */
+    memcpy(saved_handler, act, sizeof(struct sigaction));
+
+    /* Return success - caller thinks their handler is installed */
+    return 0;
+}
 
 /*
  * Check if syscall should return 0 (no-op) - uid/gid changes on Android.

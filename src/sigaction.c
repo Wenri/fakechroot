@@ -172,35 +172,14 @@ wrapper(sigaction, int, (int signum, const struct sigaction *act, struct sigacti
 {
     debug("sigaction(%d, %p, %p)", signum, act, oldact);
 
-    /* Only intercept SIGSYS */
+    /* Only intercept SIGSYS - pass through all other signals */
     if (signum != SIGSYS) {
         return nextcall(sigaction)(signum, act, oldact);
     }
 
-    /*
-     * Make our handler fully transparent to callers.
-     * Return the saved handler (what they think is installed), not our actual handler.
-     */
-
-    /* Return the previously saved handler if requested */
-    if (oldact != NULL) {
-        memcpy(oldact, &saved_sigsys_handler, sizeof(struct sigaction));
-    }
-
-    /* If just querying (act == NULL), we're done */
-    if (act == NULL) {
-        return 0;
-    }
-
-    /* Someone (e.g., Go) is trying to install a SIGSYS handler */
-    debug("sigaction: intercepting SIGSYS handler installation");
-
-    /* Save their handler for chaining */
-    memcpy(&saved_sigsys_handler, act, sizeof(struct sigaction));
-
-    /* Don't actually install their handler - keep ours installed */
-    /* Return success to make them think it worked */
-    return 0;
+    /* Use shared helper for SIGSYS protection logic */
+    debug("sigaction: intercepting SIGSYS handler change");
+    return handle_sigsys_sigaction(act, oldact, &saved_sigsys_handler);
 }
 
 /*
