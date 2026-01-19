@@ -96,73 +96,291 @@
  * Note: We only check specific syscalls here rather than returning ENOSYS
  * for all SIGSYS signals, to avoid interfering with legitimate SIGSYS uses.
  */
+/*
+ * Check if syscall should return 0 (no-op) - uid/gid changes on Android.
+ * These syscalls can't actually change user/group, so we silently succeed.
+ * Matches Category 2 in syscall.c wrapper.
+ */
+static int is_noop_syscall(int syscall_nr)
+{
+    switch (syscall_nr) {
+#ifdef SYS_setuid
+    case SYS_setuid:
+#endif
+#ifdef SYS_setuid32
+    case SYS_setuid32:
+#endif
+#ifdef SYS_setgid
+    case SYS_setgid:
+#endif
+#ifdef SYS_setgid32
+    case SYS_setgid32:
+#endif
+#ifdef SYS_setreuid
+    case SYS_setreuid:
+#endif
+#ifdef SYS_setreuid32
+    case SYS_setreuid32:
+#endif
+#ifdef SYS_setregid
+    case SYS_setregid:
+#endif
+#ifdef SYS_setregid32
+    case SYS_setregid32:
+#endif
+#ifdef SYS_setresuid
+    case SYS_setresuid:
+#endif
+#ifdef SYS_setresuid32
+    case SYS_setresuid32:
+#endif
+#ifdef SYS_setresgid
+    case SYS_setresgid:
+#endif
+#ifdef SYS_setresgid32
+    case SYS_setresgid32:
+#endif
+#ifdef SYS_setfsuid
+    case SYS_setfsuid:
+#endif
+#ifdef SYS_setfsuid32
+    case SYS_setfsuid32:
+#endif
+#ifdef SYS_setfsgid
+    case SYS_setfsgid:
+#endif
+#ifdef SYS_setfsgid32
+    case SYS_setfsgid32:
+#endif
+        return 1;
+    default:
+        return 0;
+    }
+}
+
+/*
+ * Check if syscall should return ENOSYS - blocked by Android seccomp.
+ * Matches Category 3 in syscall.c wrapper.
+ *
+ * Note: Category 1 syscalls (redirects like faccessat2 → faccessat) also
+ * return ENOSYS here because the SIGSYS handler can't perform redirects -
+ * the syscall already failed. Programs will use their own fallback.
+ */
 static int is_blocked_syscall(int syscall_nr)
 {
     switch (syscall_nr) {
     /* Filesystem */
+#ifdef SYS_mount
     case SYS_mount:
+#endif
+#ifdef SYS_chroot
     case SYS_chroot:
+#endif
     /* IPC - POSIX MQ */
+#ifdef SYS_mq_open
     case SYS_mq_open:
+#endif
     /* IPC - SysV Semaphores */
+#ifdef SYS_semget
     case SYS_semget:
+#endif
+#ifdef SYS_semctl
     case SYS_semctl:
+#endif
+#ifdef SYS_semop
     case SYS_semop:
+#endif
+#ifdef SYS_semtimedop
     case SYS_semtimedop:
+#endif
     /* IPC - SysV Messages */
+#ifdef SYS_msgctl
     case SYS_msgctl:
+#endif
+#ifdef SYS_msgget
     case SYS_msgget:
+#endif
+#ifdef SYS_msgrcv
     case SYS_msgrcv:
+#endif
+#ifdef SYS_msgsnd
     case SYS_msgsnd:
+#endif
+    /* IPC - SysV Shared Memory */
+#ifdef SYS_shmget
+    case SYS_shmget:
+#endif
+#ifdef SYS_shmctl
+    case SYS_shmctl:
+#endif
+#ifdef SYS_shmat
+    case SYS_shmat:
+#endif
+#ifdef SYS_shmdt
+    case SYS_shmdt:
+#endif
     /* Process/Thread */
+#ifdef SYS_set_robust_list
     case SYS_set_robust_list:
+#endif
+#ifdef SYS_get_robust_list
     case SYS_get_robust_list:
+#endif
+#ifdef SYS_ptrace
     case SYS_ptrace:
+#endif
+#ifdef SYS_kcmp
     case SYS_kcmp:
+#endif
+#ifdef SYS_rseq
     case SYS_rseq:
+#endif
+#ifdef SYS_clone3
     case SYS_clone3:
+#endif
     /* Memory - NUMA */
+#ifdef SYS_mbind
     case SYS_mbind:
+#endif
+#ifdef SYS_get_mempolicy
     case SYS_get_mempolicy:
+#endif
+#ifdef SYS_set_mempolicy
     case SYS_set_mempolicy:
+#endif
     /* Memory - Protection Keys */
+#ifdef SYS_pkey_mprotect
     case SYS_pkey_mprotect:
+#endif
+#ifdef SYS_pkey_alloc
     case SYS_pkey_alloc:
+#endif
+#ifdef SYS_pkey_free
     case SYS_pkey_free:
+#endif
     /* Security - Keyring */
+#ifdef SYS_add_key
     case SYS_add_key:
+#endif
+#ifdef SYS_request_key
     case SYS_request_key:
+#endif
+#ifdef SYS_keyctl
     case SYS_keyctl:
+#endif
     /* Security - Sandboxing */
+#ifdef SYS_bpf
     case SYS_bpf:
+#endif
+#ifdef SYS_landlock_create_ruleset
     case SYS_landlock_create_ruleset:
+#endif
+#ifdef SYS_landlock_add_rule
     case SYS_landlock_add_rule:
+#endif
+#ifdef SYS_landlock_restrict_self
     case SYS_landlock_restrict_self:
+#endif
     /* File Notification */
+#ifdef SYS_fanotify_init
     case SYS_fanotify_init:
+#endif
+#ifdef SYS_fanotify_mark
     case SYS_fanotify_mark:
+#endif
     /* File Handles */
+#ifdef SYS_name_to_handle_at
     case SYS_name_to_handle_at:
+#endif
+#ifdef SYS_open_by_handle_at
     case SYS_open_by_handle_at:
+#endif
     /* Async I/O */
+#ifdef SYS_io_pgetevents
     case SYS_io_pgetevents:
+#endif
+#ifdef SYS_io_uring_setup
     case SYS_io_uring_setup:
+#endif
+#ifdef SYS_io_uring_enter
     case SYS_io_uring_enter:
+#endif
+#ifdef SYS_io_uring_register
     case SYS_io_uring_register:
+#endif
     /* Modules */
+#ifdef SYS_init_module
     case SYS_init_module:
+#endif
+#ifdef SYS_delete_module
     case SYS_delete_module:
+#endif
+#ifdef SYS_finit_module
     case SYS_finit_module:
-    /* Newer syscalls - commonly used by Go/Rust */
+#endif
+    /* Newer syscalls - commonly blocked (Category 1 redirects fall through here) */
+#ifdef SYS_openat2
     case SYS_openat2:
+#endif
+#ifdef SYS_faccessat2
     case SYS_faccessat2:
+#endif
+#ifdef SYS_close_range
     case SYS_close_range:
+#endif
+#ifdef SYS_epoll_pwait2
     case SYS_epoll_pwait2:
+#endif
+#ifdef SYS_mount_setattr
     case SYS_mount_setattr:
+#endif
+#ifdef SYS_futex_waitv
     case SYS_futex_waitv:
+#endif
+#ifdef SYS_process_madvise
     case SYS_process_madvise:
+#endif
+#ifdef SYS_process_mrelease
     case SYS_process_mrelease:
+#endif
+#ifdef SYS_pidfd_send_signal
     case SYS_pidfd_send_signal:
+#endif
+    /* Category 1 syscalls that we redirect in syscall() wrapper */
+    /* Here we just return ENOSYS as fallback for raw syscalls */
+#ifdef SYS_chmod
+    case SYS_chmod:
+#endif
+#ifdef SYS_fchmodat2
+    case SYS_fchmodat2:
+#endif
+#ifdef SYS_chown
+    case SYS_chown:
+#endif
+#ifdef SYS_chown32
+    case SYS_chown32:
+#endif
+#ifdef SYS_accept
+    case SYS_accept:
+#endif
+#ifdef SYS_recv
+    case SYS_recv:
+#endif
+#ifdef SYS_send
+    case SYS_send:
+#endif
+#ifdef SYS_symlink
+    case SYS_symlink:
+#endif
+#ifdef SYS_link
+    case SYS_link:
+#endif
+#ifdef SYS_rmdir
+    case SYS_rmdir:
+#endif
+#ifdef SYS_getpgrp
+    case SYS_getpgrp:
+#endif
         return 1;
     default:
         return 0;
@@ -176,25 +394,45 @@ struct sigaction saved_sigsys_handler;
 
 /*
  * SIGSYS handler for Android seccomp bypass.
- * When Android's seccomp blocks syscalls like faccessat2, it sends SIGSYS.
- * We intercept this and return ENOSYS so Go (and other runtimes) can fallback.
+ * When Android's seccomp blocks syscalls, it sends SIGSYS.
+ * We intercept this and return appropriate values:
+ * - 0 for uid/gid syscalls (no-op on Android)
+ * - ENOSYS for other blocked syscalls (triggers program fallback)
  */
 static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
 {
-    /* Handle seccomp-blocked syscalls by returning ENOSYS */
-    if (info->si_code == SYS_SECCOMP && is_blocked_syscall(info->si_syscall)) {
-        ucontext_t *ctx = (ucontext_t *)ucontext;
+    if (info->si_code != SYS_SECCOMP) {
+        goto chain_handler;
+    }
+
+    ucontext_t *ctx = (ucontext_t *)ucontext;
+    int syscall_nr = info->si_syscall;
+
+    /* Category 2: uid/gid syscalls return 0 (success, no-op) */
+    if (is_noop_syscall(syscall_nr)) {
 #ifdef __aarch64__
-        /* On aarch64, x0 holds the return value */
+        ctx->uc_mcontext.regs[0] = 0;
+#endif
+#ifdef __x86_64__
+        ctx->uc_mcontext.gregs[REG_RAX] = 0;
+#endif
+        debug("sigsys: syscall %d -> 0 (noop)", syscall_nr);
+        return;
+    }
+
+    /* Category 3 (and Category 1 fallback): return ENOSYS */
+    if (is_blocked_syscall(syscall_nr)) {
+#ifdef __aarch64__
         ctx->uc_mcontext.regs[0] = -ENOSYS;
 #endif
 #ifdef __x86_64__
-        /* On x86_64, rax holds the return value */
         ctx->uc_mcontext.gregs[REG_RAX] = -ENOSYS;
 #endif
-        debug("sigsys: blocked syscall %d, returning ENOSYS", info->si_syscall);
+        debug("sigsys: syscall %d -> ENOSYS", syscall_nr);
         return;
     }
+
+chain_handler:
 
     /* Chain to saved handler (e.g., Go's handler) for other SIGSYS signals */
     if (saved_sigsys_handler.sa_flags & SA_SIGINFO) {
