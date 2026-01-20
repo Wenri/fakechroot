@@ -121,7 +121,7 @@ struct sigaction saved_sigsys_handler;
  * - Raw syscalls that bypass glibc typically use absolute paths
  * - The main benefit is avoiding the ENOSYS retry overhead
  */
-static int handle_sigsys_redirect(const ucontext_t *ctx, int syscall_nr)
+static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 {
     long ret;
 

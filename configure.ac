@@ -453,12 +453,11 @@ if test -n "$ANDROID_EXCLUDE_PATH"; then
     AC_DEFINE_UNQUOTED([EXCLUDE_PATH_INIT], ["$EXCLUDE_PATH_INIT"],
         [Exclude paths as C initializer])
 
-    # Compute lengths: "/proc:/sys:/dev" -> 5, 4, 4
-    EXCLUDE_LENGTH_INIT=`echo "$ANDROID_EXCLUDE_PATH" | tr ':' '\n' | while read -r p; do
-        printf '%d, ' "${#p}"
-    done | sed 's/, $//'`
+    # Generate sizeof expressions for lengths (computed by C compiler, not shell)
+    # Input: "/proc:/sys:/dev" -> Output: sizeof("/proc")-1, sizeof("/sys")-1, sizeof("/dev")-1
+    EXCLUDE_LENGTH_INIT=`echo "$ANDROID_EXCLUDE_PATH" | sed 's/\([[^:]]*\)/sizeof("\1")-1/g; s/:/, /g'`
     AC_DEFINE_UNQUOTED([EXCLUDE_LENGTH_INIT], [$EXCLUDE_LENGTH_INIT],
-        [Exclude path lengths as C initializer])
+        [Exclude path lengths as sizeof expressions])
 fi
 
 AC_DEFINE([ANDROID_ARGV0_OPT], ["--argv0"], [Option for argv0 override in ld.so])
