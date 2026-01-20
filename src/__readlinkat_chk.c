@@ -32,12 +32,8 @@
 wrapper(__readlinkat_chk, ssize_t, (int dirfd, const char * path, char * buf, size_t bufsiz, size_t buflen))
 {
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
-
     int linksize;
     char tmp[FAKECHROOT_PATH_MAX], *tmpptr;
-
-    /* Use compile-time ANDROID_BASE */
-    const char *fakechroot_base = ANDROID_BASE;
 
     debug("__readlinkat_chk(%d, \"%s\", &buf, %zd, %zd)", dirfd, path, bufsiz, buflen);
     path = expand_chroot_path_at(dirfd, path, fakechroot_buf);
@@ -50,34 +46,26 @@ wrapper(__readlinkat_chk, ssize_t, (int dirfd, const char * path, char * buf, si
     }
     tmp[linksize] = '\0';
 
-    if (fakechroot_base != NULL) {
-        const size_t base_len = strlen(fakechroot_base);
-        tmpptr = strstr(tmp, fakechroot_base);
-        if (tmpptr != tmp) {
-            tmpptr = tmp;
-        }
-        else if (tmp[base_len] == '\0') {
-            tmpptr = "/";
-            linksize = 1;
-        }
-        else if (tmp[base_len] == '/') {
-            tmpptr = tmp + base_len;
-            linksize -= base_len;
-        }
-        else {
-            tmpptr = tmp;
-        }
-        if ((size_t)linksize > bufsiz) {
-            linksize = bufsiz;
-        }
-        strncpy(buf, tmpptr, linksize);
+    /* Strip ANDROID_BASE prefix from symlink target if present */
+    tmpptr = strstr(tmp, ANDROID_BASE);
+    if (tmpptr != tmp) {
+        tmpptr = tmp;
+    }
+    else if (tmp[ANDROID_BASE_LEN] == '\0') {
+        tmpptr = "/";
+        linksize = 1;
+    }
+    else if (tmp[ANDROID_BASE_LEN] == '/') {
+        tmpptr = tmp + ANDROID_BASE_LEN;
+        linksize -= ANDROID_BASE_LEN;
     }
     else {
-        if (linksize > bufsiz) {
-            linksize = bufsiz;
-        }
-        strncpy(buf, tmp, linksize);
+        tmpptr = tmp;
     }
+    if ((size_t)linksize > bufsiz) {
+        linksize = bufsiz;
+    }
+    strncpy(buf, tmpptr, linksize);
     return linksize;
 }
 

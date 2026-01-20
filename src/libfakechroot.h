@@ -94,6 +94,8 @@ int snprintf(char *, size_t, const char *, ...);
 #endif
 
 /* ANDROID_BASE is guaranteed non-empty by configure */
+/* Compile-time constant for ANDROID_BASE length */
+#define ANDROID_BASE_LEN (sizeof(ANDROID_BASE) - 1)
 
 static inline void narrow_chroot_path(char *path)
 {
@@ -106,15 +108,14 @@ static inline void narrow_chroot_path(char *path)
         return;
     }
 
-    const size_t fakechroot_base_len = strlen(ANDROID_BASE);
     const size_t path_len = strlen(path);
 
-    if (path_len == fakechroot_base_len) {
+    if (path_len == ANDROID_BASE_LEN) {
         path[0] = '/';
         path[1] = '\0';
     }
-    else if (path[fakechroot_base_len] == '/') {
-        memmove(path, path + fakechroot_base_len, 1 + path_len - fakechroot_base_len);
+    else if (path[ANDROID_BASE_LEN] == '/') {
+        memmove(path, path + ANDROID_BASE_LEN, 1 + path_len - ANDROID_BASE_LEN);
     }
 }
 
@@ -123,14 +124,9 @@ static inline const char *expand_chroot_rel_path(const char *path, char *buf)
     if (path == NULL || *path != '/' || fakechroot_localdir(path)) {
         return path;
     }
-    const size_t base_len = strlen(ANDROID_BASE);
-    if (path == buf) {
-        /* In-place: shift path to make room for ANDROID_BASE */
-        memmove(buf + base_len, buf, strlen(buf) + 1);
-        memcpy(buf, ANDROID_BASE, base_len);
-    } else {
-        snprintf(buf, FAKECHROOT_PATH_MAX, "%s%s", ANDROID_BASE, path);
-    }
+    /* memmove handles both path==buf (overlap) and path!=buf cases */
+    memmove(buf + ANDROID_BASE_LEN, path, strlen(path) + 1);
+    memcpy(buf, ANDROID_BASE, ANDROID_BASE_LEN);
     return buf;
 }
 

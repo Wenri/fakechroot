@@ -32,9 +32,6 @@ wrapper(glob64, int, (const char * pattern, int flags, int (* errfunc) (const ch
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     int rc, i;
 
-    /* Use compile-time ANDROID_BASE */
-    const char *fakechroot_base = ANDROID_BASE;
-
     debug("glob64(\"%s\", %d, &errfunc, &pglob)", pattern, flags);
     pattern = expand_chroot_rel_path(pattern, fakechroot_buf);
 
@@ -42,20 +39,19 @@ wrapper(glob64, int, (const char * pattern, int flags, int (* errfunc) (const ch
     if (rc < 0)
         return rc;
 
+    /* Strip ANDROID_BASE prefix from results */
     for (i = 0; i < pglob->gl_pathc; i++) {
         char tmp[FAKECHROOT_PATH_MAX], *tmpptr;
 
         strcpy(tmp, pglob->gl_pathv[i]);
 
-        if (fakechroot_base != NULL) {
-            const char *ptr = strstr(tmp, fakechroot_base);
-            if (ptr != tmp) {
-                tmpptr = tmp;
-            } else {
-                tmpptr = tmp + strlen(fakechroot_base);
-            }
-            strcpy(pglob->gl_pathv[i], tmpptr);
+        const char *ptr = strstr(tmp, ANDROID_BASE);
+        if (ptr != tmp) {
+            tmpptr = tmp;
+        } else {
+            tmpptr = tmp + ANDROID_BASE_LEN;
         }
+        strcpy(pglob->gl_pathv[i], tmpptr);
     }
     return rc;
 }
