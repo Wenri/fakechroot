@@ -96,13 +96,13 @@ LOCAL int fakechroot_debug (const char *fmt, ...)
 
 
 /* Check if path is on exclude list */
-LOCAL int fakechroot_localdir (const char * p_path)
+LOCAL bool fakechroot_localdir (const char * p_path)
 {
     const char *v_path = p_path;
     char cwd_path[FAKECHROOT_PATH_MAX];
 
     if (!p_path)
-        return 0;
+        return false;
 
     /* We need to expand relative paths */
     if (p_path[0] != '/') {
@@ -120,11 +120,11 @@ LOCAL int fakechroot_localdir (const char * p_path)
             if (exclude_length[i] > len ||
                     v_path[exclude_length[i] - 1] != (exclude_list[i])[exclude_length[i] - 1] ||
                     strncmp(exclude_list[i], v_path, exclude_length[i]) != 0) continue;
-            if (exclude_length[i] == len || v_path[exclude_length[i]] == '/') return 1;
+            if (exclude_length[i] == len || v_path[exclude_length[i]] == '/') return true;
         }
     }
 
-    return 0;
+    return false;
 }
 
 
