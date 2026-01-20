@@ -93,15 +93,11 @@ bool fakechroot_localdir (const char *);
 int snprintf(char *, size_t, const char *, ...);
 #endif
 
-/* ANDROID_BASE is set at compile time via configure; provide fallback for non-Android builds */
-#ifndef ANDROID_BASE
-#define ANDROID_BASE NULL
-#endif
-
+/* ANDROID_BASE is guaranteed non-empty by configure */
 
 static inline void narrow_chroot_path(char *path)
 {
-    if (ANDROID_BASE == NULL || path == NULL || *path == '\0') {
+    if (path == NULL || *path == '\0') {
         return;
     }
 
@@ -124,10 +120,7 @@ static inline void narrow_chroot_path(char *path)
 
 static inline const char *expand_chroot_rel_path(const char *path, char *buf)
 {
-    if (ANDROID_BASE == NULL || path == NULL || *path != '/') {
-        return path;
-    }
-    if (fakechroot_localdir(path)) {
+    if (path == NULL || *path != '/' || fakechroot_localdir(path)) {
         return path;
     }
     snprintf(buf, FAKECHROOT_PATH_MAX, "%s%s", ANDROID_BASE, path);
@@ -136,7 +129,7 @@ static inline const char *expand_chroot_rel_path(const char *path, char *buf)
 
 static inline const char *expand_chroot_path(const char *path, char *abspath_buf, char *buf)
 {
-    if (ANDROID_BASE == NULL || path == NULL || fakechroot_localdir(path)) {
+    if (path == NULL || fakechroot_localdir(path)) {
         return path;
     }
     rel2abs(path, abspath_buf);
@@ -145,7 +138,7 @@ static inline const char *expand_chroot_path(const char *path, char *abspath_buf
 
 static inline const char *expand_chroot_path_at(int dirfd, const char *path, char *abspath_buf, char *buf)
 {
-    if (ANDROID_BASE == NULL || path == NULL || fakechroot_localdir(path)) {
+    if (path == NULL || fakechroot_localdir(path)) {
         return path;
     }
     rel2absat(dirfd, path, abspath_buf);
