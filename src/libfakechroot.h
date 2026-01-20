@@ -21,6 +21,10 @@
 #ifndef __LIBFAKECHROOT_H
 #define __LIBFAKECHROOT_H
 
+#ifndef _GNU_SOURCE
+#define _GNU_SOURCE
+#endif
+#include <dlfcn.h>
 #include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
