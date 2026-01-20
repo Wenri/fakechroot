@@ -33,8 +33,6 @@
 #include <stdio.h>
 #include <pwd.h>
 #include <dlfcn.h>
-#include <fcntl.h>
-#include <sys/prctl.h>
 #include "setenv.h"
 #include "libfakechroot.h"
 #include "getcwd_real.h"
@@ -95,66 +93,6 @@ LOCAL int fakechroot_debug (const char *fmt, ...)
 
 
 #include "getcwd.h"
-
-
-/*
- * Set process name from /proc/self/cmdline for correct ps/top display.
- * When running under ld.so, kernel sets comm to "ld-linux-aarch64.so.1".
- * We read the original argv[0] from cmdline and use prctl to fix it.
- *
- * The execve wrapper puts the original filename in argv[0] specifically
- * so we can read it here and set the process name correctly.
- *
- * Only runs if /proc/self/exe shows we're launched via ld.so.
- * Runs automatically as a CONSTRUCTOR when the library is loaded.
- */
-static void fakechroot_set_process_name(void) CONSTRUCTOR;
-static void fakechroot_set_process_name(void)
-{
-    char exebuf[256];
-    char buf[4096];
-    int fd;
-    ssize_t n;
-    const char *name;
-
-    /* Get real libc functions to bypass our wrappers */
-    ssize_t (*real_readlink)(const char *, char *, size_t) = dlsym(RTLD_NEXT, "readlink");
-    int (*real_open)(const char *, int, ...) = dlsym(RTLD_NEXT, "open");
-
-    if (!real_readlink || !real_open)
-        return;
-
-    /* Check if we're actually running under ld.so */
-    n = real_readlink("/proc/self/exe", exebuf, sizeof(exebuf) - 1);
-    if (n <= 0)
-        return;
-    exebuf[n] = '\0';
-
-    /* Only proceed if exe is ld-linux (the dynamic linker) */
-    if (strstr(exebuf, "ld-linux") == NULL)
-        return;
-
-    fd = real_open("/proc/self/cmdline", O_RDONLY);
-    if (fd < 0)
-        return;
-
-    n = read(fd, buf, sizeof(buf) - 1);
-    close(fd);
-
-    if (n <= 0)
-        return;
-
-    buf[n] = '\0';
-
-    /* First null-terminated string is original argv[0] */
-    name = strrchr(buf, '/');
-    name = name ? name + 1 : buf;
-
-    /* PR_SET_NAME truncates to 15 chars, which is fine */
-    prctl(PR_SET_NAME, name, 0, 0, 0);
-
-    debug("fakechroot_set_process_name: set comm to \"%s\" (exe=%s)", name, exebuf);
-}
 
 
 /* Lazily load function */

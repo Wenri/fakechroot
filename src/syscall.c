@@ -40,11 +40,15 @@
 #include <string.h>
 #include <signal.h>
 #include <errno.h>
-#include <fcntl.h>        /* AT_FDCWD, AT_REMOVEDIR */
+#include <fcntl.h>        /* AT_FDCWD, AT_REMOVEDIR, O_RDONLY */
+#include <unistd.h>       /* read, close */
+#include <sys/prctl.h>    /* prctl, PR_SET_NAME */
 #include <sys/socket.h>   /* socket types */
 #include "libfakechroot.h"
 #include "android_syscalls.h"
 #include "syscall_macros.h"
+#include "readlink.h"
+#include "open.h"
 
 /* Declare the saved handler from sigaction.c */
 extern struct sigaction saved_sigsys_handler;
@@ -179,6 +183,59 @@ wrapper(syscall, long, (long number, ...))
         return nextcall(syscall)(number, a1, a2, a3, a4, a5, a6);
     }
     }
+}
+
+
+/*
+ * Set process name from /proc/self/cmdline for correct ps/top display.
+ * When running under ld.so, kernel sets comm to "ld-linux-aarch64.so.1".
+ * We read the original argv[0] from cmdline and use prctl to fix it.
+ *
+ * The execve wrapper puts the original filename in argv[0] specifically
+ * so we can read it here and set the process name correctly.
+ *
+ * Only runs if /proc/self/exe shows we're launched via ld.so.
+ * Runs automatically as a CONSTRUCTOR when the library is loaded.
+ */
+static void fakechroot_set_process_name(void) CONSTRUCTOR;
+static void fakechroot_set_process_name(void)
+{
+    char buf[4096];
+    int fd;
+    ssize_t n;
+    const char *name;
+
+    /* Check if we're actually running under ld.so */
+    n = nextcall(readlink)("/proc/self/exe", buf, sizeof(buf) - 1);
+    if (n <= 0)
+        return;
+    buf[n] = '\0';
+
+    /* Only proceed if exe is ld-linux (the dynamic linker) */
+    if (strstr(buf, "ld-linux") == NULL)
+        return;
+
+    /* Reuse buffer for cmdline */
+    fd = nextcall(open)("/proc/self/cmdline", O_RDONLY);
+    if (fd < 0)
+        return;
+
+    n = read(fd, buf, sizeof(buf) - 1);
+    close(fd);
+
+    if (n <= 0)
+        return;
+
+    buf[n] = '\0';
+
+    /* First null-terminated string is original argv[0] */
+    name = strrchr(buf, '/');
+    name = name ? name + 1 : buf;
+
+    /* PR_SET_NAME truncates to 15 chars, which is fine */
+    prctl(PR_SET_NAME, name, 0, 0, 0);
+
+    debug("fakechroot_set_process_name: set comm to \"%s\"", name);
 }
 
 #else
