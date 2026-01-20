@@ -36,10 +36,9 @@ static int _xftw_fn_wrapper (const char * file, const struct stat * sb, int flag
 
 wrapper(_xftw, int, (int mode, const char * dir, int (* fn)(const char * file, const struct stat * sb, int flag), int nopenfd))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("_xftw(%d, \"%s\", &fn, %d)", mode, dir, nopenfd);
-    dir = expand_chroot_path(dir, fakechroot_abspath, fakechroot_buf);
+    dir = expand_chroot_path(dir, fakechroot_buf);
     _xftw_fn_saved = fn;
     return nextcall(_xftw)(mode, dir, _xftw_fn_wrapper, nopenfd);
 }

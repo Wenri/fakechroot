@@ -56,7 +56,6 @@ extern struct sigaction saved_sigsys_handler;
 
 wrapper(syscall, long, (long number, ...))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     va_list ap;
     va_start(ap, number);

@@ -29,10 +29,9 @@
 
 wrapper(faccessat, int, (int dirfd, const char * pathname, int mode, int flags))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("faccessat(%d, \"%s\", %d, %d)", dirfd, pathname, mode, flags);
-    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_abspath, fakechroot_buf);
+    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_buf);
     return nextcall(faccessat)(dirfd, pathname, mode, flags);
 }
 

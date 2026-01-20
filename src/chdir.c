@@ -27,9 +27,7 @@
 
 wrapper(chdir, int, (const char * path))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
-
     char cwd[FAKECHROOT_PATH_MAX];
 
     debug("chdir(\"%s\")", path);
@@ -38,15 +36,12 @@ wrapper(chdir, int, (const char * path))
         return -1;
     }
 
-    /* Use compile-time ANDROID_BASE instead of getenv("FAKECHROOT_BASE")
-     * since we compile the base path into the library */
-    if (ANDROID_BASE != NULL) {
-        if (strstr(cwd, ANDROID_BASE) == cwd) {
-            path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
-        }
-        else {
-            path = expand_chroot_rel_path(path, fakechroot_buf);
-        }
+    /* Check if cwd is inside ANDROID_BASE */
+    if (strstr(cwd, ANDROID_BASE) == cwd) {
+        path = expand_chroot_path(path, fakechroot_buf);
+    }
+    else {
+        path = expand_chroot_rel_path(path, fakechroot_buf);
     }
 
     return nextcall(chdir)(path);

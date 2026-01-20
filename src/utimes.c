@@ -26,9 +26,8 @@
 
 wrapper(utimes, int, (const char * filename, UTIMES_TYPE_ARG2(tv)))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("utimes(\"%s\", &tv)", filename);
-    filename = expand_chroot_path(filename, fakechroot_abspath, fakechroot_buf);
+    filename = expand_chroot_path(filename, fakechroot_buf);
     return nextcall(utimes)(filename, tv);
 }

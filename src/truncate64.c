@@ -29,10 +29,9 @@
 
 wrapper(truncate64, int, (const char * path, off64_t length))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("truncate64(\"%s\", %d)", path, length);
-    path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
+    path = expand_chroot_path(path, fakechroot_buf);
     return nextcall(truncate64)(path, length);
 }
 

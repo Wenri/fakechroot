@@ -287,25 +287,22 @@ LOCAL size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf
  *
  * Buffer Reuse Strategy:
  * ----------------------
- * The expand_chroot_path() macro requires two temporary buffers:
- *   - fakechroot_abspath: for building absolute paths
- *   - fakechroot_buf: for intermediate path manipulation
- *
- * Instead of allocating 2 * FAKECHROOT_PATH_MAX (~8KB) on the stack,
- * we reuse ctx.interpPath and ctx.hashbang which are unused at this point:
+ * The expand_chroot_path() function requires one temporary buffer.
+ * Instead of allocating FAKECHROOT_PATH_MAX (~4KB) on the stack,
+ * we reuse ctx.hashbang which is unused at this point:
  *
  *   Timeline of ctx buffer usage in exec_prepare():
- *   ┌─────────────────────┬──────────────────┬─────────────────────┐
- *   │ Phase               │ ctx.interpPath   │ ctx.hashbang        │
- *   ├─────────────────────┼──────────────────┼─────────────────────┤
- *   │ expand_chroot_path  │ fakechroot_abspath│ fakechroot_buf     │
- *   │ After expand        │ (garbage)        │ (garbage)           │
- *   │ read() file header  │ (garbage)        │ file header data    │
- *   │ Return for scripts  │ (unused)         │ shebang line        │
- *   │ Return for ELF      │ (unused)         │ PT_INTERP path      │
- *   └─────────────────────┴──────────────────┴─────────────────────┘
+ *   ┌─────────────────────┬─────────────────────┐
+ *   │ Phase               │ ctx.hashbang        │
+ *   ├─────────────────────┼─────────────────────┤
+ *   │ expand_chroot_path  │ fakechroot_buf      │
+ *   │ After expand        │ (garbage)           │
+ *   │ read() file header  │ file header data    │
+ *   │ Return for scripts  │ shebang line        │
+ *   │ Return for ELF      │ PT_INTERP path      │
+ *   └─────────────────────┴─────────────────────┘
  *
- * This saves ~8KB of stack space per exec call.
+ * This saves ~4KB of stack space per exec call.
  */
 LOCAL exec_ctx_t exec_prepare(const char *filename)
 {
@@ -313,16 +310,14 @@ LOCAL exec_ctx_t exec_prepare(const char *filename)
     int file, i;
 
     /*
-     * Buffer reuse: ctx.interpPath and ctx.hashbang are unused until later.
-     * We use them as temporary buffers for the expand_chroot_path macro.
+     * Buffer reuse: ctx.hashbang is unused until later.
+     * We use it as temporary buffer for expand_chroot_path.
      * After expansion, ctx.hashbang will be overwritten by file read().
-     * ctx.interpPath remains garbage until parse_shebang() (scripts only).
      */
-    char *fakechroot_abspath = ctx.interpPath;
     char *fakechroot_buf = ctx.hashbang;
 
-    /* Expand filename path (uses fakechroot_abspath/buf as temp buffers) */
-    filename = expand_chroot_path(filename, fakechroot_abspath, fakechroot_buf);
+    /* Expand filename path (uses fakechroot_buf as temp buffer) */
+    filename = expand_chroot_path(filename, fakechroot_buf);
     strncpy(ctx.expandedFilename, filename, FAKECHROOT_PATH_MAX - 1);
     ctx.expandedFilename[FAKECHROOT_PATH_MAX - 1] = '\0';
 
@@ -423,12 +418,8 @@ static void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const ar
  *
  * Buffer Reuse Strategy:
  * ----------------------
- * The expand_chroot_path() macro requires two temporary buffers.
- * Instead of allocating them on stack, we reuse existing buffers:
- *
- *   fakechroot_abspath = ctx->interpPath
- *     - ctx->interpPath is our destination anyway
- *     - If expand_chroot_path puts result here, we skip the final copy
+ * The expand_chroot_path() function requires one temporary buffer.
+ * Instead of allocating it on stack, we reuse an existing buffer:
  *
  *   fakechroot_buf = *shebangArg (caller-provided)
  *     - Caller (exec_build_script_argv) passes interp_buf via shebangArg
@@ -450,17 +441,13 @@ static void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const ar
 static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
 {
     /*
-     * Buffer reuse for expand_chroot_path macro:
-     *
-     * fakechroot_abspath: Use ctx->interpPath directly since it's our
-     * destination. If the macro stores the result there, we avoid a copy.
+     * Buffer reuse for expand_chroot_path function:
      *
      * fakechroot_buf: Use the buffer passed by caller through shebangArg.
      * IMPORTANT: We must capture *shebangArg BEFORE strtok_r modifies it!
      * The caller (exec_build_script_argv) initializes shebangArg to point
      * to interp_buf, which we borrow as our temporary buffer.
      */
-    char *fakechroot_abspath = ctx->interpPath;
     char *fakechroot_buf = *shebangArg;  /* Capture before strtok_r! */
 
     /* Null-terminate at first newline - we only care about shebang line */
@@ -476,13 +463,11 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
     }
     debug("exec: originalInterp=\"%s\" (from shebang)", originalInterp);
 
-    /* Expand interpreter path - result may end up in fakechroot_abspath (ctx->interpPath) */
+    /* Expand interpreter path */
     const char *ptr = originalInterp;
-    ptr = expand_chroot_path(ptr, fakechroot_abspath, fakechroot_buf);
-    /* Copy if result is not already in ctx->interpPath */
-    if (ptr != ctx->interpPath) {
-        strncpy(ctx->interpPath, ptr, FAKECHROOT_PATH_MAX - 1);
-    }
+    ptr = expand_chroot_path(ptr, fakechroot_buf);
+    /* Copy result to ctx->interpPath */
+    strncpy(ctx->interpPath, ptr, FAKECHROOT_PATH_MAX - 1);
     ctx->interpPath[FAKECHROOT_PATH_MAX - 1] = '\0';
 
     /* Skip leading whitespace in shebangArg */

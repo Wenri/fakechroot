@@ -32,7 +32,6 @@
 
 wrapper_alias(openat64, int, (int dirfd, const char * pathname, int flags, ...))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
 
     int mode = 0;
@@ -41,7 +40,7 @@ wrapper_alias(openat64, int, (int dirfd, const char * pathname, int flags, ...))
     va_start(arg, flags);
 
     debug("openat64(%d, \"%s\", %d, ...)", dirfd, pathname, flags);
-    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_abspath, fakechroot_buf);
+    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_buf);
 
     if (flags & O_CREAT) {
         mode = va_arg(arg, int);

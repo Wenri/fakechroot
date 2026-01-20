@@ -34,10 +34,9 @@
 
 wrapper(__xstat64, int, (int ver, const char * filename, struct stat64 * buf))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("__xstat64(%d, \"%s\", &buf)", ver, filename);
-    filename = expand_chroot_path(filename, fakechroot_abspath, fakechroot_buf);
+    filename = expand_chroot_path(filename, fakechroot_buf);
     return nextcall(__xstat64)(ver, filename, buf);
 }
 

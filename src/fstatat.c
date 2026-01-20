@@ -30,10 +30,9 @@
 
 wrapper(fstatat, int, (int dirfd, const char *pathname, struct stat *buf, int flags))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("fstatat(%d, \"%s\", &buf, %d)", dirfd, pathname, flags);
-    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_abspath, fakechroot_buf);
+    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_buf);
     return nextcall(fstatat)(dirfd, pathname, buf, flags);
 }
 

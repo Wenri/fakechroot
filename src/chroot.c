@@ -46,18 +46,13 @@
 
 wrapper(chroot, int, (const char * path))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
-
     char *ld_library_path, *separator, *new_ld_library_path;
     int status;
     size_t len;
     char cwd[FAKECHROOT_PATH_MAX - 1];
     char tmp[FAKECHROOT_PATH_MAX], *tmpptr = tmp;
     struct STAT_T sb;
-
-    /* Use compile-time ANDROID_BASE */
-    const char *fakechroot_base = ANDROID_BASE;
 
     debug("chroot(\"%s\")", path);
 
@@ -76,8 +71,8 @@ wrapper(chroot, int, (const char * path))
         return -1;
     }
 
-    if (fakechroot_base != NULL && strstr(cwd, fakechroot_base) == cwd) {
-        path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
+    if (strstr(cwd, ANDROID_BASE) == cwd) {
+        path = expand_chroot_path(path, fakechroot_buf);
         strlcpy(tmp, path, FAKECHROOT_PATH_MAX);
         dedotdot(tmpptr);
         path = tmpptr;

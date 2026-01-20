@@ -30,16 +30,15 @@
 
 wrapper(readlinkat, ssize_t, (int dirfd, const char * path, char * buf, size_t bufsiz))
 {
+    char fakechroot_buf[FAKECHROOT_PATH_MAX];
     int linksize;
     char tmp[FAKECHROOT_PATH_MAX], *tmpptr;
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
-    char fakechroot_buf[FAKECHROOT_PATH_MAX];
 
     /* Use compile-time ANDROID_BASE */
     const char *fakechroot_base = ANDROID_BASE;
 
     debug("readlinkat(%d, \"%s\", &buf, %zd)", dirfd, path, bufsiz);
-    path = expand_chroot_path_at(dirfd, path, fakechroot_abspath, fakechroot_buf);
+    path = expand_chroot_path_at(dirfd, path, fakechroot_buf);
 
     if ((linksize = nextcall(readlinkat)(dirfd, path, tmp, FAKECHROOT_PATH_MAX-1)) == -1) {
         return -1;

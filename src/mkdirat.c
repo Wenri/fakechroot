@@ -31,10 +31,9 @@
 
 wrapper(mkdirat, int, (int dirfd, const char * pathname, mode_t mode))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("mkdirat(%d, \"%s\", 0%o)", dirfd, pathname, mode);
-    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_abspath, fakechroot_buf);
+    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_buf);
     return nextcall(mkdirat)(dirfd, pathname, mode);
 }
 

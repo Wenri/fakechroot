@@ -32,10 +32,9 @@
 
 wrapper(statx, int, (int dirfd, const char * pathname, int flags, unsigned int mask, struct statx * statxbuf))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("statx(%d, \"%s\", %d, %u, &statxbuf)", dirfd, pathname, flags, mask);
-    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_abspath, fakechroot_buf);
+    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_buf);
     return nextcall(statx)(dirfd, pathname, flags, mask, statxbuf);
 }
 

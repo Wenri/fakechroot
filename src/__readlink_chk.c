@@ -30,7 +30,6 @@
 
 wrapper(__readlink_chk, ssize_t, (const char * path, char * buf, size_t bufsiz, size_t buflen))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
 
     int linksize;
@@ -40,7 +39,7 @@ wrapper(__readlink_chk, ssize_t, (const char * path, char * buf, size_t bufsiz, 
     const char *fakechroot_base = ANDROID_BASE;
 
     debug("__readlink_chk(\"%s\", &buf, %zd, %zd)", path, bufsiz, buflen);
-    path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
+    path = expand_chroot_path(path, fakechroot_buf);
 
     /* Use FAKECHROOT_PATH_MAX for the buffer length since tmp has that size.
        Using buflen (caller's buffer size) triggers FORTIFY abort when

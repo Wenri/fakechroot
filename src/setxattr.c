@@ -27,10 +27,9 @@
 
 wrapper(setxattr, int, (const char * path, const char * name, const void * value, size_t size, int flags))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("setxattr(\"%s\", \"%s\", &value, %zd, %d)", path, name, size, flags);
-    path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
+    path = expand_chroot_path(path, fakechroot_buf);
     return nextcall(setxattr)(path, name, value, size, flags);
 }
 

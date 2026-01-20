@@ -123,26 +123,33 @@ static inline const char *expand_chroot_rel_path(const char *path, char *buf)
     if (path == NULL || *path != '/' || fakechroot_localdir(path)) {
         return path;
     }
-    snprintf(buf, FAKECHROOT_PATH_MAX, "%s%s", ANDROID_BASE, path);
+    const size_t base_len = strlen(ANDROID_BASE);
+    if (path == buf) {
+        /* In-place: shift path to make room for ANDROID_BASE */
+        memmove(buf + base_len, buf, strlen(buf) + 1);
+        memcpy(buf, ANDROID_BASE, base_len);
+    } else {
+        snprintf(buf, FAKECHROOT_PATH_MAX, "%s%s", ANDROID_BASE, path);
+    }
     return buf;
 }
 
-static inline const char *expand_chroot_path(const char *path, char *abspath_buf, char *buf)
+static inline const char *expand_chroot_path(const char *path, char *buf)
 {
     if (path == NULL || fakechroot_localdir(path)) {
         return path;
     }
-    rel2abs(path, abspath_buf);
-    return expand_chroot_rel_path(abspath_buf, buf);
+    rel2abs(path, buf);
+    return expand_chroot_rel_path(buf, buf);
 }
 
-static inline const char *expand_chroot_path_at(int dirfd, const char *path, char *abspath_buf, char *buf)
+static inline const char *expand_chroot_path_at(int dirfd, const char *path, char *buf)
 {
     if (path == NULL || fakechroot_localdir(path)) {
         return path;
     }
-    rel2absat(dirfd, path, abspath_buf);
-    return expand_chroot_rel_path(abspath_buf, buf);
+    rel2absat(dirfd, path, buf);
+    return expand_chroot_rel_path(buf, buf);
 }
 
 

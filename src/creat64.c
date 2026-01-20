@@ -30,10 +30,9 @@
 
 wrapper(creat64, int, (const char * pathname, mode_t mode))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("creat64(\"%s\", 0%o)", pathname, mode);
-    pathname = expand_chroot_path(pathname, fakechroot_abspath, fakechroot_buf);
+    pathname = expand_chroot_path(pathname, fakechroot_buf);
     return nextcall(creat64)(pathname, mode);
 }
 

@@ -28,10 +28,9 @@
 
 wrapper(unlinkat, int, (int dirfd, const char * pathname, int flags))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("unlinkat(%d, \"%s\", %d)", dirfd, pathname, flags);
-    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_abspath, fakechroot_buf);
+    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_buf);
     return nextcall(unlinkat)(dirfd, pathname, flags);
 }
 

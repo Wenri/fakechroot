@@ -29,7 +29,6 @@
 
 wrapper(tmpnam, char *, (char * s))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     char *ptr, *ptr2;
 
@@ -40,7 +39,7 @@ wrapper(tmpnam, char *, (char * s))
 
     ptr = nextcall(tmpnam)(NULL);
 
-    ptr = expand_chroot_path(ptr, fakechroot_abspath, fakechroot_buf);
+    ptr = expand_chroot_path(ptr, fakechroot_buf);
 
     ptr2 = malloc(strlen(ptr) + 1);
     if (ptr2 == NULL) return NULL;

@@ -27,9 +27,8 @@
 
 wrapper(chmod, int, (const char * path, mode_t mode))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("chmod(\"%s\", 0%o)", path, mode);
-    path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
+    path = expand_chroot_path(path, fakechroot_buf);
     return nextcall(chmod)(path, mode);
 }

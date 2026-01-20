@@ -32,19 +32,18 @@
 
 wrapper(mkostemp64, int, (char * template, int flags))
 {
+    char fakechroot_buf[FAKECHROOT_PATH_MAX];
     char tmp[FAKECHROOT_PATH_MAX], *tmpptr = tmp;
     char *xxxsrc, *xxxdst;
     int xxxlen = 0;
     int fd;
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
-    char fakechroot_buf[FAKECHROOT_PATH_MAX];
 
     debug("mkostemp64(\"%s\", %d)", template, flags);
 
     strlcpy(tmp, template, FAKECHROOT_PATH_MAX);
 
     if (!fakechroot_localdir(tmp)) {
-        tmpptr = expand_chroot_path(tmpptr, fakechroot_abspath, fakechroot_buf);
+        tmpptr = expand_chroot_path(tmpptr, fakechroot_buf);
     }
 
     for (xxxdst = template; *xxxdst; xxxdst++);

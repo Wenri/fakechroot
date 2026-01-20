@@ -27,10 +27,9 @@
 
 wrapper(glob_pattern_p, int, (const char * pattern, int quote))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("glob_pattern_p(\"%s\", %d)", pattern, quote);
-    pattern = expand_chroot_path(pattern, fakechroot_abspath, fakechroot_buf);
+    pattern = expand_chroot_path(pattern, fakechroot_buf);
     return nextcall(glob_pattern_p)(pattern, quote);
 }
 

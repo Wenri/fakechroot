@@ -30,18 +30,17 @@
 
 wrapper(mktemp, char *, (char * template))
 {
+    char fakechroot_buf[FAKECHROOT_PATH_MAX];
     char tmp[FAKECHROOT_PATH_MAX], *tmpptr = tmp;
     char *xxxsrc, *xxxdst;
     int xxxlen = 0;
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
-    char fakechroot_buf[FAKECHROOT_PATH_MAX];
 
     debug("mktemp(\"%s\")", template);
 
     strlcpy(tmp, template, FAKECHROOT_PATH_MAX);
 
     if (!fakechroot_localdir(tmp)) {
-        tmpptr = expand_chroot_path(tmpptr, fakechroot_abspath, fakechroot_buf);
+        tmpptr = expand_chroot_path(tmpptr, fakechroot_buf);
     }
 
     for (xxxdst = template; *xxxdst; xxxdst++);

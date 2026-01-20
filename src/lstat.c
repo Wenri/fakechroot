@@ -30,13 +30,11 @@
 
 wrapper(lstat, int, (const char * filename, struct stat * buf))
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
-    char fakechroot_buf[FAKECHROOT_PATH_MAX];
+    char abs_filename[FAKECHROOT_PATH_MAX];
     debug("lstat(\"%s\", &buf)", filename);
 
     if (!fakechroot_localdir(filename)) {
         if (filename != NULL) {
-            char abs_filename[FAKECHROOT_PATH_MAX];
             rel2abs(filename, abs_filename);
             filename = abs_filename;
         }
@@ -49,9 +47,7 @@ wrapper(lstat, int, (const char * filename, struct stat * buf))
 /* Prevent looping with realpath() */
 LOCAL int lstat_rel(const char * file_name, struct stat * buf)
 {
-    char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
-    char *fakechroot_path;
     char tmp[FAKECHROOT_PATH_MAX];
     int retval;
     READLINK_TYPE_RETURN status;
