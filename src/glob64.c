@@ -25,7 +25,6 @@
 #define _LARGEFILE64_SOURCE
 #include <glob.h>
 #include "libfakechroot.h"
-#include "android-config.h"
 
 
 wrapper(glob64, int, (const char * pattern, int flags, int (* errfunc) (const char *, int), glob64_t * pglob))

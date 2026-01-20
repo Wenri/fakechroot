@@ -28,7 +28,6 @@
 
 #include "rel2abs.h"
 #include "rel2absat.h"
-#include "android-config.h"
 
 
 #define debug fakechroot_debug

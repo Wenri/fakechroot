@@ -428,22 +428,25 @@ ACX_CHECK_FUNC_ARGTYPES([utimes],
     [[const char *_]],
     [[const struct timeval _@<:@2@:>@], [struct timeval _@<:@2@:>@]])
 
-# Android-specific configuration (replaces android-config.h)
+# Android-specific configuration
+# When ANDROID_EXCLUDE_PATH is set, we're building for Android and all vars are required
 AC_ARG_VAR([ANDROID_ELFLOADER], [Path to Android glibc's ld.so dynamic linker])
 AC_ARG_VAR([ANDROID_BASE], [Installation prefix for Android (e.g., /data/data/.../usr)])
 AC_ARG_VAR([ANDROID_EXCLUDE_PATH], [Colon-separated paths excluded from chroot translation])
 
-if test -n "$ANDROID_ELFLOADER"; then
+if test -n "$ANDROID_EXCLUDE_PATH"; then
+    # Validate required variables for Android build
+    if test -z "$ANDROID_ELFLOADER"; then
+        AC_MSG_ERROR([ANDROID_ELFLOADER must be set when ANDROID_EXCLUDE_PATH is set])
+    fi
+    if test -z "$ANDROID_BASE"; then
+        AC_MSG_ERROR([ANDROID_BASE must be set when ANDROID_EXCLUDE_PATH is set])
+    fi
+
     AC_DEFINE_UNQUOTED([ANDROID_ELFLOADER], ["$ANDROID_ELFLOADER"],
         [Path to Android glibc's dynamic linker])
-fi
-
-if test -n "$ANDROID_BASE"; then
     AC_DEFINE_UNQUOTED([ANDROID_BASE], ["$ANDROID_BASE"],
         [Installation prefix for Android])
-fi
-
-if test -n "$ANDROID_EXCLUDE_PATH"; then
     AC_DEFINE_UNQUOTED([ANDROID_EXCLUDE_PATH], ["$ANDROID_EXCLUDE_PATH"],
         [Paths excluded from chroot translation])
 

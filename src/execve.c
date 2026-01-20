@@ -32,7 +32,6 @@
 #include "open.h"
 #include "setenv.h"
 #include "readlink.h"
-#include "android-config.h"
 #include "execve.h"
 
 
