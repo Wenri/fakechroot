@@ -86,6 +86,12 @@
 # define vfork fork
 #endif
 
+/* Forward declarations needed by inline functions below */
+int fakechroot_localdir (const char *);
+#ifndef snprintf
+int snprintf(char *, size_t, const char *, ...);
+#endif
+
 
 static inline void narrow_chroot_path(char *path)
 {
@@ -241,13 +247,6 @@ extern const char * const preserve_env_list[];
 extern const size_t preserve_env_list_count;
 
 int fakechroot_debug (const char *, ...);
-int fakechroot_localdir (const char *);
 int fakechroot_try_cmd_subst (char *, const char *, char *);
-
-
-/* We don't want to define _BSD_SOURCE and _DEFAULT_SOURCE and include stdio.h */
-#ifndef snprintf
-int snprintf(char *, size_t, const char *, ...);
-#endif
 
 #endif
