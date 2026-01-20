@@ -143,7 +143,7 @@
 
 
 #define wrapper_decl_proto(function) \
-    extern LOCAL fakechroot_wrapperfn_t fakechroot_##function##_nextfunc SECTION_DATA_FAKECHROOT
+    extern LOCAL fakechroot_##function##_fn_t fakechroot_##function##_nextfunc SECTION_DATA_FAKECHROOT
 
 /*
  * Lazy-load stub using GCC's __builtin_apply to forward all arguments.
@@ -153,7 +153,7 @@
 #define wrapper_stub(function, return_type, arguments) \
     static return_type fakechroot_##function##_stub arguments { \
         fakechroot_##function##_nextfunc = \
-            (fakechroot_wrapperfn_t)dlsym(RTLD_NEXT, #function); \
+            (fakechroot_##function##_fn_t)dlsym(RTLD_NEXT, #function); \
         void *args = __builtin_apply_args(); \
         void *ret = __builtin_apply( \
             (void(*)())fakechroot_##function##_nextfunc, \
@@ -163,8 +163,8 @@
 
 #define wrapper_decl(function, return_type, arguments) \
     wrapper_stub(function, return_type, arguments); \
-    LOCAL fakechroot_wrapperfn_t fakechroot_##function##_nextfunc SECTION_DATA_FAKECHROOT = \
-        (fakechroot_wrapperfn_t) fakechroot_##function##_stub
+    LOCAL fakechroot_##function##_fn_t fakechroot_##function##_nextfunc SECTION_DATA_FAKECHROOT = \
+        fakechroot_##function##_stub
 
 #define wrapper_fn_t(function, return_type, arguments) \
     typedef return_type (*fakechroot_##function##_fn_t) arguments
@@ -196,8 +196,7 @@
     wrapper_decl(function, return_type, arguments); \
     PUBLIC return_type wrapper_fn_name(function) arguments
 
-#define nextcall(function) \
-    ((fakechroot_##function##_fn_t)(fakechroot_##function##_nextfunc))
+#define nextcall(function) (fakechroot_##function##_nextfunc)
 
 
 #ifdef __GNUC__
@@ -227,9 +226,6 @@
   #define _STAT_VER 3
  #endif
 #endif
-
-typedef void (*fakechroot_wrapperfn_t)(void);
-
 
 extern const char * const preserve_env_list[];
 extern const size_t preserve_env_list_count;
