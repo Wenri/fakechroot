@@ -141,10 +141,27 @@
 #define wrapper_decl_proto(function) \
     extern LOCAL struct fakechroot_wrapper fakechroot_##function##_wrapper_decl SECTION_DATA_FAKECHROOT
 
-#define wrapper_decl(function) \
+/*
+ * Lazy-load stub using GCC's __builtin_apply to forward all arguments.
+ * Size 64 covers our max of 7 args (syscall) with padding. Most args
+ * are in registers anyway (6 on x86-64, 8 on aarch64).
+ */
+#define wrapper_stub(function, return_type, arguments) \
+    static return_type fakechroot_##function##_stub arguments { \
+        fakechroot_##function##_wrapper_decl.nextfunc = \
+            (fakechroot_wrapperfn_t)dlsym(RTLD_NEXT, #function); \
+        void *args = __builtin_apply_args(); \
+        void *ret = __builtin_apply( \
+            (void(*)())fakechroot_##function##_wrapper_decl.nextfunc, \
+            args, 64); \
+        __builtin_return(ret); \
+    }
+
+#define wrapper_decl(function, return_type, arguments) \
+    wrapper_stub(function, return_type, arguments); \
     LOCAL struct fakechroot_wrapper fakechroot_##function##_wrapper_decl SECTION_DATA_FAKECHROOT = { \
         (fakechroot_wrapperfn_t) function, \
-        NULL, \
+        (fakechroot_wrapperfn_t) fakechroot_##function##_stub, \
         #function \
     }
 
@@ -170,22 +187,16 @@
 
 #define wrapper(function, return_type, arguments) \
     wrapper_proto(function, return_type, arguments); \
-    wrapper_decl(function); \
+    wrapper_decl(function, return_type, arguments); \
     PUBLIC return_type function arguments
 
 #define wrapper_alias(function, return_type, arguments) \
     wrapper_proto_alias(function, return_type, arguments); \
-    wrapper_decl(function); \
+    wrapper_decl(function, return_type, arguments); \
     PUBLIC return_type wrapper_fn_name(function) arguments
 
 #define nextcall(function) \
-    ( \
-      (fakechroot_##function##_fn_t)( \
-          fakechroot_##function##_wrapper_decl.nextfunc ? \
-          fakechroot_##function##_wrapper_decl.nextfunc : \
-          fakechroot_loadfunc(&fakechroot_##function##_wrapper_decl) \
-      ) \
-    )
+    ((fakechroot_##function##_fn_t)(fakechroot_##function##_wrapper_decl.nextfunc))
 
 
 #ifdef __GNUC__
@@ -219,7 +230,7 @@
 typedef void (*fakechroot_wrapperfn_t)(void);
 
 struct fakechroot_wrapper {
-    fakechroot_wrapperfn_t func;
+    const fakechroot_wrapperfn_t func;
     fakechroot_wrapperfn_t nextfunc;
     const char *name;
 };
@@ -229,7 +240,6 @@ extern const char * const preserve_env_list[];
 extern const size_t preserve_env_list_count;
 
 int fakechroot_debug (const char *, ...);
-fakechroot_wrapperfn_t fakechroot_loadfunc (struct fakechroot_wrapper *);
 int fakechroot_localdir (const char *);
 int fakechroot_try_cmd_subst (char *, const char *, char *);
 

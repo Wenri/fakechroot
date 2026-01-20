@@ -95,19 +95,6 @@ LOCAL int fakechroot_debug (const char *fmt, ...)
 #include "getcwd.h"
 
 
-/* Lazily load function */
-LOCAL fakechroot_wrapperfn_t fakechroot_loadfunc (struct fakechroot_wrapper * w)
-{
-    char *msg;
-    if (!(w->nextfunc = dlsym(RTLD_NEXT, w->name))) {;
-        msg = dlerror();
-        fprintf(stderr, "%s: %s: %s\n", PACKAGE, w->name, msg != NULL ? msg : "unresolved symbol");
-        exit(EXIT_FAILURE);
-    }
-    return w->nextfunc;
-}
-
-
 /* Check if path is on exclude list */
 LOCAL int fakechroot_localdir (const char * p_path)
 {
