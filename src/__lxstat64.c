@@ -61,7 +61,7 @@ LOCAL int __lxstat64_rel(int ver, const char * filename, struct stat64 * buf)
 
     debug("__lxstat64_rel(%d, \"%s\", &buf)", ver, filename);
     orig_filename = filename;
-    expand_chroot_rel_path(filename);
+    filename = expand_chroot_rel_path(filename, fakechroot_buf);
     retval = nextcall(__lxstat64)(ver, filename, buf);
     /* deal with http://bugs.debian.org/561991 */
     if ((retval == 0) && (buf->st_mode & S_IFMT) == S_IFLNK)

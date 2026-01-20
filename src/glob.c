@@ -33,7 +33,7 @@ wrapper(glob, int, (const char * pattern, int flags, int (* errfunc) (const char
     const char *fakechroot_base = ANDROID_BASE;
 
     debug("glob(\"%s\", %d, &errfunc, &pglob)", pattern, flags);
-    expand_chroot_rel_path(pattern);
+    pattern = expand_chroot_rel_path(pattern, fakechroot_buf);
 
     rc = nextcall(glob)(pattern, flags, errfunc, pglob);
     if (rc < 0)

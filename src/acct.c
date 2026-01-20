@@ -28,6 +28,6 @@ wrapper(acct, int, (const char * filename))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("acct(\"%s\")", filename);
-    expand_chroot_path(filename);
+    filename = expand_chroot_path(filename, fakechroot_abspath, fakechroot_buf);
     return nextcall(acct)(filename);
 }

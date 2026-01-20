@@ -33,7 +33,7 @@ wrapper(__xmknod, int, (int ver, const char * path, mode_t mode, dev_t * dev))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("__xmknod(%d, \"%s\", 0%o, &dev)", ver, path, mode);
-    expand_chroot_path(path);
+    path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
     return nextcall(__xmknod)(ver, path, mode, dev);
 }
 

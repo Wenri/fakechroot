@@ -34,7 +34,7 @@ wrapper(fstatat64, int, (int dirfd, const char *pathname, struct stat64 *buf, in
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("fstatat64(%d, \"%s\", &buf, %d)", dirfd, pathname, flags);
-    expand_chroot_path_at(dirfd, pathname);
+    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_abspath, fakechroot_buf);
     return nextcall(fstatat64)(dirfd, pathname, buf, flags);
 }
 

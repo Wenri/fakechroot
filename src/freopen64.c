@@ -32,7 +32,7 @@ wrapper(freopen64, FILE *, (const char *path, const char *mode, FILE *stream))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("freopen64(\"%s\", \"%s\", &stream)", path, mode);
-    expand_chroot_path(path);
+    path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
     return nextcall(freopen64)(path, mode, stream);
 }
 

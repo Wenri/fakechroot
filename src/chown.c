@@ -30,6 +30,6 @@ wrapper(chown, int, (const char * path, uid_t owner, gid_t group))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("chown(\"%s\", %d, %d)", path, owner, group);
-    expand_chroot_path(path);
+    path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
     return nextcall(chown)(path, owner, group);
 }

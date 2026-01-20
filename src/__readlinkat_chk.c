@@ -41,7 +41,7 @@ wrapper(__readlinkat_chk, ssize_t, (int dirfd, const char * path, char * buf, si
     const char *fakechroot_base = ANDROID_BASE;
 
     debug("__readlinkat_chk(%d, \"%s\", &buf, %zd, %zd)", dirfd, path, bufsiz, buflen);
-    expand_chroot_path_at(dirfd, path);
+    path = expand_chroot_path_at(dirfd, path, fakechroot_abspath, fakechroot_buf);
 
     /* Use FAKECHROOT_PATH_MAX for the buffer length since tmp has that size.
        Using buflen (caller's buffer size) triggers FORTIFY abort when

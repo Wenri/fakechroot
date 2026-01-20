@@ -29,9 +29,9 @@ wrapper(rename, int, (const char * oldpath, const char * newpath))
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     char tmp[FAKECHROOT_PATH_MAX];
     debug("rename(\"%s\", \"%s\")", oldpath, newpath);
-    expand_chroot_path(oldpath);
+    oldpath = expand_chroot_path(oldpath, fakechroot_abspath, fakechroot_buf);
     strcpy(tmp, oldpath);
     oldpath = tmp;
-    expand_chroot_path(newpath);
+    newpath = expand_chroot_path(newpath, fakechroot_abspath, fakechroot_buf);
     return nextcall(rename)(oldpath, newpath);
 }

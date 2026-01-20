@@ -30,7 +30,7 @@ wrapper(euidaccess, int, (const char * pathname, int mode))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("euidaccess(\"%s\", %d)", pathname, mode);
-    expand_chroot_path(pathname);
+    pathname = expand_chroot_path(pathname, fakechroot_abspath, fakechroot_buf);
     return nextcall(euidaccess)(pathname, mode);
 }
 

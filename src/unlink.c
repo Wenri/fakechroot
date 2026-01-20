@@ -28,6 +28,6 @@ wrapper(unlink, int, (const char * pathname))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("unlink(\"%s\")", pathname);
-    expand_chroot_path(pathname);
+    pathname = expand_chroot_path(pathname, fakechroot_abspath, fakechroot_buf);
     return nextcall(unlink)(pathname);
 }

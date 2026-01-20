@@ -77,7 +77,7 @@ wrapper(chroot, int, (const char * path))
     }
 
     if (fakechroot_base != NULL && strstr(cwd, fakechroot_base) == cwd) {
-        expand_chroot_path(path);
+        path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
         strlcpy(tmp, path, FAKECHROOT_PATH_MAX);
         dedotdot(tmpptr);
         path = tmpptr;
@@ -85,7 +85,7 @@ wrapper(chroot, int, (const char * path))
     else {
         size_t tmplen;
         if (*path == '/') {
-            expand_chroot_rel_path(path);
+            path = expand_chroot_rel_path(path, fakechroot_buf);
             strlcpy(tmp, path, FAKECHROOT_PATH_MAX);
             dedotdot(tmpptr);
             path = tmpptr;

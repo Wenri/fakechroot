@@ -28,6 +28,6 @@ wrapper(pathconf, long, (const char * path, int name))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("pathconf(\"%s\", %d)", path, name);
-    expand_chroot_path(path);
+    path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
     return nextcall(pathconf)(path, name);
 }

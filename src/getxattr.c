@@ -32,7 +32,7 @@ wrapper(getxattr, ssize_t, (const char * path, const char * name, void * value, 
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("getxattr(\"%s\", \"%s\", &value, %zd)", path, name, size);
-    expand_chroot_path(path);
+    path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
     return nextcall(getxattr)(path, name, value, size);
 }
 

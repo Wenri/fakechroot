@@ -53,7 +53,7 @@ wrapper(lstat64, int, (const char * file_name, struct stat64 * buf))
     file_name = resolved;
 
     orig = file_name;
-    expand_chroot_path(file_name);
+    file_name = expand_chroot_path(file_name, fakechroot_abspath, fakechroot_buf);
     retval = nextcall(lstat64)(file_name, buf);
     /* deal with http://bugs.debian.org/561991 */
     if ((buf->st_mode & S_IFMT) == S_IFLNK)

@@ -34,7 +34,7 @@ wrapper(mkfifoat, int, (int dirfd, const char * pathname, mode_t mode))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("mkfifoat(%d, \"%s\", 0%o)", dirfd, pathname, mode);
-    expand_chroot_path_at(dirfd, pathname);
+    pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_abspath, fakechroot_buf);
     return nextcall(mkfifoat)(dirfd, pathname, mode);
 }
 

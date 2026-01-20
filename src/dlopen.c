@@ -31,7 +31,7 @@ wrapper(dlopen, void *, (const char * filename, int flag))
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("dlopen(\"%s\", %d)", filename, flag);
     if (filename && strchr(filename, '/') != NULL) {
-        expand_chroot_path(filename);
+        filename = expand_chroot_path(filename, fakechroot_abspath, fakechroot_buf);
         debug("dlopen(\"%s\", %d)", filename, flag);
     }
     return nextcall(dlopen)(filename, flag);

@@ -35,7 +35,7 @@ wrapper(__xmknodat, int, (int ver, int dirfd, const char * path, mode_t mode, de
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("__xmknodat(%d, %d, \"%s\", 0%o, &dev)", ver, dirfd, path, mode);
-    expand_chroot_path_at(dirfd, path);
+    path = expand_chroot_path_at(dirfd, path, fakechroot_abspath, fakechroot_buf);
     return nextcall(__xmknodat)(ver, dirfd, path, mode, dev);
 }
 

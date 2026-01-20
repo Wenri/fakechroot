@@ -28,6 +28,6 @@ wrapper(tempnam, char *, (const char * dir, const char * pfx))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("tempnam(\"%s\", \"%s\")", dir, pfx);
-    expand_chroot_path(dir);
+    dir = expand_chroot_path(dir, fakechroot_abspath, fakechroot_buf);
     return nextcall(tempnam)(dir, pfx);
 }

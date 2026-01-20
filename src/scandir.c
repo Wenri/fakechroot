@@ -31,7 +31,7 @@ wrapper(scandir, int, (const char * dir, struct dirent *** namelist, SCANDIR_TYP
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("scandir(\"%s\", &namelist, &filter, &compar)", dir);
-    expand_chroot_path(dir);
+    dir = expand_chroot_path(dir, fakechroot_abspath, fakechroot_buf);
     return nextcall(scandir)(dir, namelist, filter, compar);
 }
 

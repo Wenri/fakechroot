@@ -113,39 +113,44 @@ static inline void narrow_chroot_path(char *path)
     }
 }
 
-#define expand_chroot_rel_path(path) \
-    { \
-        if (!fakechroot_localdir(path)) { \
-            if ((path) != NULL && *((char *)(path)) == '/') { \
-                if (ANDROID_BASE != NULL ) { \
-                    snprintf(fakechroot_buf, FAKECHROOT_PATH_MAX, "%s%s", ANDROID_BASE, (path)); \
-                    (path) = fakechroot_buf; \
-                } \
-            } \
-        } \
+static inline const char *expand_chroot_rel_path(const char *path, char *buf)
+{
+    if (fakechroot_localdir(path)) {
+        return path;
     }
+    if (path == NULL || *path != '/') {
+        return path;
+    }
+    if (ANDROID_BASE == NULL) {
+        return path;
+    }
+    snprintf(buf, FAKECHROOT_PATH_MAX, "%s%s", ANDROID_BASE, path);
+    return buf;
+}
 
-#define expand_chroot_path(path) \
-    { \
-        if (!fakechroot_localdir(path)) { \
-            if ((path) != NULL) { \
-                rel2abs((path), fakechroot_abspath); \
-                (path) = fakechroot_abspath; \
-                expand_chroot_rel_path(path); \
-            } \
-        } \
+static inline const char *expand_chroot_path(const char *path, char *abspath_buf, char *buf)
+{
+    if (fakechroot_localdir(path)) {
+        return path;
     }
+    if (path == NULL) {
+        return path;
+    }
+    rel2abs(path, abspath_buf);
+    return expand_chroot_rel_path(abspath_buf, buf);
+}
 
-#define expand_chroot_path_at(dirfd, path) \
-    { \
-        if (!fakechroot_localdir(path)) { \
-            if ((path) != NULL) { \
-                rel2absat(dirfd, (path), fakechroot_abspath); \
-                (path) = fakechroot_abspath; \
-                expand_chroot_rel_path(path); \
-            } \
-        } \
+static inline const char *expand_chroot_path_at(int dirfd, const char *path, char *abspath_buf, char *buf)
+{
+    if (fakechroot_localdir(path)) {
+        return path;
     }
+    if (path == NULL) {
+        return path;
+    }
+    rel2absat(dirfd, path, abspath_buf);
+    return expand_chroot_rel_path(abspath_buf, buf);
+}
 
 
 #define wrapper_decl_proto(function) \

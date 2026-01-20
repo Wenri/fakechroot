@@ -36,7 +36,7 @@ wrapper(statfs, int, (const char * path, struct statfs * buf))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("statfs(\"%s\", &buf)", path);
-    expand_chroot_path(path);
+    path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
     return nextcall(statfs)(path, buf);
 }
 

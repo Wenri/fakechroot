@@ -58,7 +58,7 @@
         long a3 = va_arg(ap, long); \
         va_end(ap); \
         debug("syscall(" #sysnum ", %d, \"%s\", %ld)", dirfd, pathname, a3); \
-        expand_chroot_path_at(dirfd, pathname); \
+        pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_abspath, fakechroot_buf); \
         return nextcall(syscall)(number, dirfd, pathname, a3); \
     }
 
@@ -71,7 +71,7 @@
         long a4 = va_arg(ap, long); \
         va_end(ap); \
         debug("syscall(" #sysnum ", %d, \"%s\", ...)", dirfd, pathname); \
-        expand_chroot_path_at(dirfd, pathname); \
+        pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_abspath, fakechroot_buf); \
         return nextcall(syscall)(number, dirfd, pathname, a3, a4); \
     }
 
@@ -85,7 +85,7 @@
         long a5 = va_arg(ap, long); \
         va_end(ap); \
         debug("syscall(" #sysnum ", %d, \"%s\", ...)", dirfd, pathname); \
-        expand_chroot_path_at(dirfd, pathname); \
+        pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_abspath, fakechroot_buf); \
         return nextcall(syscall)(number, dirfd, pathname, a3, a4, a5); \
     }
 
@@ -104,7 +104,7 @@
         long a3 = va_arg(ap, long); \
         va_end(ap); \
         debug("syscall(" #sysnum ", %d, \"%s\", %ld) -> " #target, dirfd, pathname, a3); \
-        expand_chroot_path_at(dirfd, pathname); \
+        pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_abspath, fakechroot_buf); \
         return nextcall(syscall)(target, dirfd, pathname, a3, extra); \
     }
 
@@ -122,7 +122,7 @@
         long a2 = va_arg(ap, long); \
         va_end(ap); \
         debug("syscall(" #sysnum ", \"%s\", %ld) -> " #target, pathname, a2); \
-        expand_chroot_path(pathname); \
+        pathname = expand_chroot_path(pathname, fakechroot_abspath, fakechroot_buf); \
         return nextcall(syscall)(target, AT_FDCWD, pathname, a2, extra); \
     }
 
@@ -134,7 +134,7 @@
         long a3 = va_arg(ap, long); \
         va_end(ap); \
         debug("syscall(" #sysnum ", \"%s\", ...) -> " #target, pathname); \
-        expand_chroot_path(pathname); \
+        pathname = expand_chroot_path(pathname, fakechroot_abspath, fakechroot_buf); \
         return nextcall(syscall)(target, AT_FDCWD, pathname, a2, a3, extra); \
     }
 
@@ -144,7 +144,7 @@
         const char *pathname = va_arg(ap, const char *); \
         va_end(ap); \
         debug("syscall(" #sysnum ", \"%s\") -> " #target, pathname); \
-        expand_chroot_path(pathname); \
+        pathname = expand_chroot_path(pathname, fakechroot_abspath, fakechroot_buf); \
         return nextcall(syscall)(target, AT_FDCWD, pathname, extra); \
     }
 
@@ -199,7 +199,7 @@
         const char *newpath = va_arg(ap, const char *); \
         va_end(ap); \
         debug("syscall(" #sysnum ", \"%s\", \"%s\") -> " #target, oldpath, newpath); \
-        expand_chroot_path(newpath); \
+        newpath = expand_chroot_path(newpath, fakechroot_abspath, fakechroot_buf); \
         return nextcall(syscall)(target, oldpath, AT_FDCWD, newpath); \
     }
 
@@ -210,8 +210,8 @@
         const char *newpath = va_arg(ap, const char *); \
         va_end(ap); \
         debug("syscall(" #sysnum ", \"%s\", \"%s\") -> " #target, oldpath, newpath); \
-        expand_chroot_path(oldpath); \
-        expand_chroot_path(newpath); \
+        oldpath = expand_chroot_path(oldpath, fakechroot_abspath, fakechroot_buf); \
+        newpath = expand_chroot_path(newpath, fakechroot_abspath, fakechroot_buf); \
         return nextcall(syscall)(target, AT_FDCWD, oldpath, AT_FDCWD, newpath, 0); \
     }
 

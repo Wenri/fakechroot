@@ -38,7 +38,7 @@ static int _xftw64_fn_wrapper (const char * file, const struct stat * sb, int fl
 wrapper(_xftw64, int, (int mode, const char * dir, int (* fn)(const char * file, const struct stat64 * sb, int flag), int nopenfd))
 {
     debug("_xftw64(%d, \"%s\", &fn, %d)", mode, dir, nopenfd);
-    expand_chroot_path(dir);
+    dir = expand_chroot_path(dir, fakechroot_abspath, fakechroot_buf);
     _xftw64_fn_saved = fn;
     return nextcall(_xftw64)(mode, dir, _xftw64_fn_wrapper, nopenfd);
 }

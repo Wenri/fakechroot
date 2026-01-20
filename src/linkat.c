@@ -32,10 +32,10 @@ wrapper(linkat, int, (int olddirfd, const char * oldpath, int newdirfd, const ch
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     char tmp[FAKECHROOT_PATH_MAX];
     debug("linkat(%d, \"%s\", %d, \"%s\", %d)", olddirfd, oldpath, newdirfd, newpath, flags);
-    expand_chroot_path_at(olddirfd, oldpath);
+    oldpath = expand_chroot_path_at(olddirfd, oldpath, fakechroot_abspath, fakechroot_buf);
     strcpy(tmp, oldpath);
     oldpath = tmp;
-    expand_chroot_path_at(newdirfd, newpath);
+    newpath = expand_chroot_path_at(newdirfd, newpath, fakechroot_abspath, fakechroot_buf);
     return nextcall(linkat)(olddirfd, oldpath, newdirfd, newpath, flags);
 }
 

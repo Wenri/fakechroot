@@ -39,7 +39,7 @@ wrapper(_xftw, int, (int mode, const char * dir, int (* fn)(const char * file, c
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("_xftw(%d, \"%s\", &fn, %d)", mode, dir, nopenfd);
-    expand_chroot_path(dir);
+    dir = expand_chroot_path(dir, fakechroot_abspath, fakechroot_buf);
     _xftw_fn_saved = fn;
     return nextcall(_xftw)(mode, dir, _xftw_fn_wrapper, nopenfd);
 }

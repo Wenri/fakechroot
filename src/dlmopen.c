@@ -32,7 +32,7 @@ wrapper(dlmopen, void *, (Lmid_t nsid, const char * filename, int flag))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("dlmopen(&nsid, \"%s\", %d)", filename, flag);
-    expand_chroot_path(filename);
+    filename = expand_chroot_path(filename, fakechroot_abspath, fakechroot_buf);
     return nextcall(dlmopen)(nsid, filename, flag);
 }
 

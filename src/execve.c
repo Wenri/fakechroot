@@ -322,7 +322,7 @@ LOCAL exec_ctx_t exec_prepare(const char *filename)
     char *fakechroot_buf = ctx.hashbang;
 
     /* Expand filename path (uses fakechroot_abspath/buf as temp buffers) */
-    expand_chroot_path(filename);
+    filename = expand_chroot_path(filename, fakechroot_abspath, fakechroot_buf);
     strncpy(ctx.expandedFilename, filename, FAKECHROOT_PATH_MAX - 1);
     ctx.expandedFilename[FAKECHROOT_PATH_MAX - 1] = '\0';
 
@@ -478,7 +478,7 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
 
     /* Expand interpreter path - result may end up in fakechroot_abspath (ctx->interpPath) */
     const char *ptr = originalInterp;
-    expand_chroot_path(ptr);
+    ptr = expand_chroot_path(ptr, fakechroot_abspath, fakechroot_buf);
     /* Copy if result is not already in ctx->interpPath */
     if (ptr != ctx->interpPath) {
         strncpy(ctx->interpPath, ptr, FAKECHROOT_PATH_MAX - 1);

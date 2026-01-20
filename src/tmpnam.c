@@ -40,7 +40,7 @@ wrapper(tmpnam, char *, (char * s))
 
     ptr = nextcall(tmpnam)(NULL);
 
-    expand_chroot_path(ptr);
+    ptr = expand_chroot_path(ptr, fakechroot_abspath, fakechroot_buf);
 
     ptr2 = malloc(strlen(ptr) + 1);
     if (ptr2 == NULL) return NULL;

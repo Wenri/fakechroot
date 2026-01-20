@@ -29,6 +29,6 @@ wrapper(utime, int, (const char * filename, const struct utimbuf * buf))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("utime(\"%s\", &buf)", filename);
-    expand_chroot_path(filename);
+    filename = expand_chroot_path(filename, fakechroot_abspath, fakechroot_buf);
     return nextcall(utime)(filename, buf);
 }

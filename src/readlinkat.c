@@ -39,7 +39,7 @@ wrapper(readlinkat, ssize_t, (int dirfd, const char * path, char * buf, size_t b
     const char *fakechroot_base = ANDROID_BASE;
 
     debug("readlinkat(%d, \"%s\", &buf, %zd)", dirfd, path, bufsiz);
-    expand_chroot_path_at(dirfd, path);
+    path = expand_chroot_path_at(dirfd, path, fakechroot_abspath, fakechroot_buf);
 
     if ((linksize = nextcall(readlinkat)(dirfd, path, tmp, FAKECHROOT_PATH_MAX-1)) == -1) {
         return -1;

@@ -30,6 +30,6 @@ wrapper(mkfifo, int, (const char * pathname, mode_t mode))
     char fakechroot_abspath[FAKECHROOT_PATH_MAX];
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     debug("mkfifo(\"%s\", 0%o)", pathname, mode);
-    expand_chroot_path(pathname);
+    pathname = expand_chroot_path(pathname, fakechroot_abspath, fakechroot_buf);
     return nextcall(mkfifo)(pathname, mode);
 }

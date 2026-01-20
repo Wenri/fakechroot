@@ -59,7 +59,7 @@ LOCAL int lstat_rel(const char * file_name, struct stat * buf)
 
     debug("lstat_rel(\"%s\", &buf)", file_name);
     orig = file_name;
-    expand_chroot_rel_path(file_name);
+    file_name = expand_chroot_rel_path(file_name, fakechroot_buf);
     retval = nextcall(lstat)(file_name, buf);
     /* deal with http://bugs.debian.org/561991 */
     if ((buf->st_mode & S_IFMT) == S_IFLNK)

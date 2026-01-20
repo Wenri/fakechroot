@@ -65,7 +65,7 @@ wrapper(connect, int, (int sockfd, CONNECT_TYPE_ARG2(addr), socklen_t addrlen))
             path = tmp;
         }
         else {
-            expand_chroot_path(path);
+            path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
         }
 
         if (strlen(path) >= af_unix_path_max) {

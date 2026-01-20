@@ -40,7 +40,7 @@ wrapper_alias(open64, int, (const char * pathname, int flags, ...))
     va_start(arg, flags);
 
     debug("open64(\"%s\", %d, ...)", pathname, flags);
-    expand_chroot_path(pathname);
+    pathname = expand_chroot_path(pathname, fakechroot_abspath, fakechroot_buf);
 
     if (flags & O_CREAT) {
         mode = va_arg(arg, int);

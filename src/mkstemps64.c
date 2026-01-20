@@ -50,7 +50,7 @@ wrapper(mkstemps64, int, (char * template, int suffixlen))
     strlcpy(tmp, template, FAKECHROOT_PATH_MAX);
 
     if (!fakechroot_localdir(tmp)) {
-        expand_chroot_path(tmpptr);
+        tmpptr = expand_chroot_path(tmpptr, fakechroot_abspath, fakechroot_buf);
     }
 
     for (xxxdst = template; *xxxdst; xxxdst++);

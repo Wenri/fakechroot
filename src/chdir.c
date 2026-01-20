@@ -42,10 +42,10 @@ wrapper(chdir, int, (const char * path))
      * since we compile the base path into the library */
     if (ANDROID_BASE != NULL) {
         if (strstr(cwd, ANDROID_BASE) == cwd) {
-            expand_chroot_path(path);
+            path = expand_chroot_path(path, fakechroot_abspath, fakechroot_buf);
         }
         else {
-            expand_chroot_rel_path(path);
+            path = expand_chroot_rel_path(path, fakechroot_buf);
         }
     }
 

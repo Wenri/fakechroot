@@ -46,7 +46,7 @@ wrapper(__lxstat, int, (int ver, const char * filename, struct stat * buf))
 
     debug("__lxstat(%d, \"%s\", &buf)", ver, filename);
     orig_filename = filename;
-    expand_chroot_path(filename);
+    filename = expand_chroot_path(filename, fakechroot_abspath, fakechroot_buf);
     retval = nextcall(__lxstat)(ver, filename, buf);
     /* deal with http://bugs.debian.org/561991 */
     if ((retval == 0) && (buf->st_mode & S_IFMT) == S_IFLNK)
