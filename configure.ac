@@ -447,17 +447,11 @@ if test -n "$ANDROID_EXCLUDE_PATH"; then
     AC_DEFINE_UNQUOTED([ANDROID_EXCLUDE_PATH], ["$ANDROID_EXCLUDE_PATH"],
         [Paths excluded from chroot translation])
 
-    # Parse colon-separated paths into C initializer list
-    # Input: "/proc:/sys:/dev" -> Output: "/proc", "/sys", "/dev"
-    EXCLUDE_PATH_INIT=`echo "$ANDROID_EXCLUDE_PATH" | sed 's/:/", "/g'`
-    AC_DEFINE_UNQUOTED([EXCLUDE_PATH_INIT], ["$EXCLUDE_PATH_INIT"],
-        [Exclude paths as C initializer])
-
-    # Generate sizeof expressions for lengths (computed by C compiler, not shell)
-    # Input: "/proc:/sys:/dev" -> Output: sizeof("/proc")-1, sizeof("/sys")-1, sizeof("/dev")-1
-    EXCLUDE_LENGTH_INIT=`echo "$ANDROID_EXCLUDE_PATH" | sed 's/\([[^:]]*\)/sizeof("\1")-1/g; s/:/, /g'`
-    AC_DEFINE_UNQUOTED([EXCLUDE_LENGTH_INIT], [$EXCLUDE_LENGTH_INIT],
-        [Exclude path lengths as sizeof expressions])
+    # Generate Boost.PP sequence from colon-separated paths
+    # Input: "/proc:/sys:/dev" -> Output: ("/proc")("/sys")("/dev")
+    EXCLUDE_PATH_SEQ=`echo "$ANDROID_EXCLUDE_PATH" | sed 's/\([[^:]]*\)/("\1")/g; s/://g'`
+    AC_DEFINE_UNQUOTED([EXCLUDE_PATH_SEQ], [$EXCLUDE_PATH_SEQ],
+        [Exclude paths as Boost.PP sequence])
 fi
 
 AC_DEFINE([ANDROID_ARGV0_OPT], ["--argv0"], [Option for argv0 override in ld.so])

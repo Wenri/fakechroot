@@ -41,10 +41,20 @@
 #include "strchrnul.h"
 
 /* Compile-time exclude list from configure --with-android-exclude-path */
-#ifdef EXCLUDE_PATH_INIT
-static const char * const exclude_list[] = { EXCLUDE_PATH_INIT };
-static const size_t exclude_length[] = { EXCLUDE_LENGTH_INIT };
-static const size_t list_max = sizeof(exclude_list) / sizeof(exclude_list[0]);
+#ifdef EXCLUDE_PATH_SEQ
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/seq/size.hpp>
+
+#define EXCLUDE_PATH_ELEM(r, data, elem) elem,
+#define EXCLUDE_LENGTH_ELEM(r, data, elem) sizeof(elem) - 1,
+
+static const char * const exclude_list[] = {
+    BOOST_PP_SEQ_FOR_EACH(EXCLUDE_PATH_ELEM, _, EXCLUDE_PATH_SEQ)
+};
+static const size_t exclude_length[] = {
+    BOOST_PP_SEQ_FOR_EACH(EXCLUDE_LENGTH_ELEM, _, EXCLUDE_PATH_SEQ)
+};
+static const size_t list_max = BOOST_PP_SEQ_SIZE(EXCLUDE_PATH_SEQ);
 #else
 #error "ANDROID_EXCLUDE_PATH must be set at configure time"
 #endif
