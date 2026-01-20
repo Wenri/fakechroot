@@ -25,12 +25,11 @@
 
 wrapper(link, int, (const char *oldpath, const char *newpath))
 {
-    char fakechroot_buf[FAKECHROOT_PATH_MAX];
     char oldpath_buf[FAKECHROOT_PATH_MAX];
+    char newpath_buf[FAKECHROOT_PATH_MAX];
 
     debug("link(\"%s\", \"%s\")", oldpath, newpath);
-    oldpath = expand_chroot_path(oldpath, fakechroot_buf);
-    strcpy(oldpath_buf, oldpath);
-    newpath = expand_chroot_path(newpath, fakechroot_buf);
-    return nextcall(link)(oldpath_buf, newpath);
+    oldpath = expand_chroot_path(oldpath, oldpath_buf);
+    newpath = expand_chroot_path(newpath, newpath_buf);
+    return nextcall(link)(oldpath, newpath);
 }
