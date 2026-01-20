@@ -56,6 +56,18 @@ extern struct sigaction saved_sigsys_handler;
 
 wrapper(syscall, long, (long number, ...))
 {
+    /* Quick early returns for noop/blocked syscalls - no va_args needed */
+    if (is_noop_syscall(number)) {
+        debug("syscall(%ld) -> 0 (uid/gid no-op)", number);
+        return 0;
+    }
+
+    if (is_blocked_syscall(number)) {
+        debug("syscall(%ld) -> ENOSYS (blocked)", number);
+        errno = ENOSYS;
+        return -1;
+    }
+
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
     va_list ap;
     va_start(ap, number);
@@ -127,10 +139,6 @@ wrapper(syscall, long, (long number, ...))
 #undef SYMLINK_REDIRECT_X
 #undef LINK_REDIRECT_X
 
-    /* --- Category 2 & 3: Use shared functions from android_syscalls.h --- */
-    /* Category 2 (uid/gid no-ops) and Category 3 (blocked syscalls) are now */
-    /* handled in the default case using is_noop_syscall()/is_blocked_syscall() */
-
 #ifdef SYS_rt_sigaction
     /*
      * Intercept rt_sigaction syscall to protect our SIGSYS handler.
@@ -154,24 +162,10 @@ wrapper(syscall, long, (long number, ...))
 #endif
 
     default: {
-        /* Category 2: uid/gid syscalls return 0 (no-op on Android) */
-        if (is_noop_syscall(number)) {
-            va_end(ap);
-            debug("syscall(%ld) -> 0 (uid/gid no-op)", number);
-            return 0;
-        }
-
-        /* Category 3: blocked syscalls return ENOSYS */
-        if (is_blocked_syscall(number)) {
-            va_end(ap);
-            debug("syscall(%ld) -> ENOSYS (blocked)", number);
-            errno = ENOSYS;
-            return -1;
-        }
-
         /* Pass through all other syscalls with up to 6 args.
          * This matches glibc's syscall() implementation which also
-         * extracts exactly 6 va_arg unconditionally. */
+         * extracts exactly 6 va_arg unconditionally.
+         * Note: noop/blocked syscalls already handled at function start. */
         long a1 = va_arg(ap, long);
         long a2 = va_arg(ap, long);
         long a3 = va_arg(ap, long);

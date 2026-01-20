@@ -221,10 +221,7 @@ static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
     ucontext_t *ctx = (ucontext_t *)ucontext;
     int syscall_nr = info->si_syscall;
 
-    /* Category 1: Redirect syscalls - call target syscall directly */
-    if (handle_sigsys_redirect(ctx, syscall_nr)) {
-        return;
-    }
+    /* Quick checks first - avoid switch statement overhead */
 
     /* Category 2: uid/gid syscalls return 0 (success, no-op) */
     if (is_noop_syscall(syscall_nr)) {
@@ -237,6 +234,11 @@ static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
     if (is_blocked_syscall(syscall_nr)) {
         SIGSYS_SET_RETURN(ctx, -ENOSYS);
         debug("sigsys: syscall %d -> ENOSYS", syscall_nr);
+        return;
+    }
+
+    /* Category 1: Redirect syscalls - call target syscall directly */
+    if (handle_sigsys_redirect(ctx, syscall_nr)) {
         return;
     }
 
