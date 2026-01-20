@@ -98,7 +98,7 @@ LOCAL int fakechroot_debug (const char *fmt, ...)
 /* Check if path is on exclude list */
 LOCAL int fakechroot_localdir (const char * p_path)
 {
-    char *v_path = (char *)p_path;
+    const char *v_path = p_path;
     char cwd_path[FAKECHROOT_PATH_MAX];
 
     if (!p_path)
@@ -107,8 +107,8 @@ LOCAL int fakechroot_localdir (const char * p_path)
     /* We need to expand relative paths */
     if (p_path[0] != '/') {
         getcwd_real(cwd_path, FAKECHROOT_PATH_MAX);
+        narrow_chroot_path(cwd_path);
         v_path = cwd_path;
-        narrow_chroot_path(v_path);
     }
 
     /* We try to find if we need direct access to a file */

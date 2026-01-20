@@ -87,25 +87,31 @@
 #endif
 
 
-#define narrow_chroot_path(path) \
-    { \
-        if ((path) != NULL && *((char *)(path)) != '\0') { \
-            if (ANDROID_BASE != NULL) { \
-                char *fakechroot_ptr = strstr((path), ANDROID_BASE); \
-                if (fakechroot_ptr == (path)) { \
-                    const size_t fakechroot_base_len = strlen(ANDROID_BASE); \
-                    const size_t path_len = strlen(path); \
-                    if (path_len == fakechroot_base_len) { \
-                        ((char *)(path))[0] = '/'; \
-                        ((char *)(path))[1] = '\0'; \
-                    } \
-                    else if ( ((char *)(path))[fakechroot_base_len] == '/' ) { \
-                        memmove((void *)(path), (path) + fakechroot_base_len, 1 + path_len - fakechroot_base_len); \
-                    } \
-                } \
-            } \
-        } \
+static inline void narrow_chroot_path(char *path)
+{
+    if (path == NULL || *path == '\0') {
+        return;
     }
+    if (ANDROID_BASE == NULL) {
+        return;
+    }
+
+    char *fakechroot_ptr = strstr(path, ANDROID_BASE);
+    if (fakechroot_ptr != path) {
+        return;
+    }
+
+    const size_t fakechroot_base_len = strlen(ANDROID_BASE);
+    const size_t path_len = strlen(path);
+
+    if (path_len == fakechroot_base_len) {
+        path[0] = '/';
+        path[1] = '\0';
+    }
+    else if (path[fakechroot_base_len] == '/') {
+        memmove(path, path + fakechroot_base_len, 1 + path_len - fakechroot_base_len);
+    }
+}
 
 #define expand_chroot_rel_path(path) \
     { \
@@ -147,8 +153,7 @@
 
 /*
  * Lazy-load stub using GCC's __builtin_apply to forward all arguments.
- * Size 64 covers our max of 7 args (syscall) with padding. Most args
- * are in registers anyway (6 on x86-64, 8 on aarch64).
+ * Most args are in registers anyway (6 on x86-64, 8 on aarch64).
  */
 #define wrapper_stub(function, return_type, arguments) \
     static return_type fakechroot_##function##_stub arguments { \
@@ -157,7 +162,7 @@
         void *args = __builtin_apply_args(); \
         void *ret = __builtin_apply( \
             (void(*)())fakechroot_##function##_nextfunc, \
-            args, 64); \
+            args, 0); \
         __builtin_return(ret); \
     }
 
