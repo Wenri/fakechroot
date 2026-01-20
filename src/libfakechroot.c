@@ -59,8 +59,6 @@ static const size_t list_max = BOOST_PP_SEQ_SIZE(EXCLUDE_PATH_SEQ);
 #error "ANDROID_EXCLUDE_PATH must be set at configure time"
 #endif
 
-static int first = 0;
-
 
 /* List of environment variables to preserve on clearenv() */
 const char * const preserve_env_list[] = {
@@ -99,12 +97,6 @@ LOCAL int fakechroot_debug (const char *fmt, ...)
 #include "getcwd.h"
 
 
-/* SIGSYS handler installation - defined in sigaction.c */
-#ifdef __linux__
-extern void fakechroot_install_sigsys_handler(void);
-#endif
-
-
 /*
  * Set process name from /proc/self/cmdline for correct ps/top display.
  * When running under ld.so, kernel sets comm to "ld-linux-aarch64.so.1".
@@ -114,7 +106,9 @@ extern void fakechroot_install_sigsys_handler(void);
  * so we can read it here and set the process name correctly.
  *
  * Only runs if /proc/self/exe shows we're launched via ld.so.
+ * Runs automatically as a CONSTRUCTOR when the library is loaded.
  */
+static void fakechroot_set_process_name(void) CONSTRUCTOR;
 static void fakechroot_set_process_name(void)
 {
     char exebuf[256];
@@ -163,30 +157,6 @@ static void fakechroot_set_process_name(void)
 }
 
 
-/* Bootstrap the library */
-static void fakechroot_init (void) CONSTRUCTOR;
-static void fakechroot_init (void)
-{
-    debug("fakechroot_init()");
-    debug("FAKECHROOT_BASE=\"%s\"", ANDROID_BASE);
-
-    if (!first) {
-        debug("ANDROID_EXCLUDE_PATH=\"%s\"", ANDROID_EXCLUDE_PATH ? ANDROID_EXCLUDE_PATH : "(null)");
-        debug("ANDROID_ELFLOADER=\"%s\"", ANDROID_ELFLOADER);
-
-        first = 1;
-
-#ifdef __linux__
-        /* Install SIGSYS handler for Android seccomp bypass */
-        fakechroot_install_sigsys_handler();
-#endif
-
-        /* Set process name for ps/top display */
-        fakechroot_set_process_name();
-    }
-}
-
-
 /* Lazily load function */
 LOCAL fakechroot_wrapperfn_t fakechroot_loadfunc (struct fakechroot_wrapper * w)
 {
@@ -208,9 +178,6 @@ LOCAL int fakechroot_localdir (const char * p_path)
 
     if (!p_path)
         return 0;
-
-    if (!first)
-        fakechroot_init();
 
     /* We need to expand relative paths */
     if (p_path[0] != '/') {

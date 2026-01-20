@@ -274,9 +274,10 @@ wrapper(sigaction, int, (int signum, const struct sigaction *act, struct sigacti
 
 /*
  * Install our SIGSYS handler using nextcall to bypass our own wrapper.
- * Called from fakechroot_init() in libfakechroot.c.
+ * Runs automatically as a CONSTRUCTOR when the library is loaded.
  */
-LOCAL void fakechroot_install_sigsys_handler(void)
+static void fakechroot_install_sigsys_handler(void) CONSTRUCTOR;
+static void fakechroot_install_sigsys_handler(void)
 {
     struct sigaction sa;
 
