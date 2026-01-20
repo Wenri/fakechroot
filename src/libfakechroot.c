@@ -40,27 +40,27 @@
 #include "getcwd_real.h"
 #include "strchrnul.h"
 
-#define EXCLUDE_LIST_SIZE 100
-#define EXCLUDE_PATH_MAX 256
+/* Compile-time exclude list from configure --with-android-exclude-path */
+#ifdef EXCLUDE_PATH_INIT
+static const char * const exclude_list[] = { EXCLUDE_PATH_INIT };
+static const size_t exclude_length[] = { EXCLUDE_LENGTH_INIT };
+static const size_t list_max = sizeof(exclude_list) / sizeof(exclude_list[0]);
+#else
+#error "ANDROID_EXCLUDE_PATH must be set at configure time"
+#endif
 
-/* Useful to exclude a list of directories or files */
-/* Use static buffers to avoid malloc in constructor (causes corruption on Android) */
-static char exclude_list_storage[EXCLUDE_LIST_SIZE][EXCLUDE_PATH_MAX];
-static char *exclude_list[EXCLUDE_LIST_SIZE];
-static int exclude_length[EXCLUDE_LIST_SIZE];
-static int list_max = 0;
 static int first = 0;
 
 
 /* List of environment variables to preserve on clearenv() */
-char *preserve_env_list[] = {
+const char * const preserve_env_list[] = {
     "FAKECHROOT_DEBUG",
     "FAKEROOTKEY",
     "FAKED_MODE",
     "LD_LIBRARY_PATH",
     "LD_PRELOAD"
 };
-const int preserve_env_list_count = sizeof preserve_env_list / sizeof preserve_env_list[0];
+const size_t preserve_env_list_count = sizeof preserve_env_list / sizeof preserve_env_list[0];
 
 
 LOCAL int fakechroot_debug (const char *fmt, ...)
@@ -171,25 +171,6 @@ static void fakechroot_init (void)
         fakechroot_install_sigsys_handler();
 #endif
 
-        /* We get a list of directories or files */
-        /* Use static storage to avoid malloc in constructor (causes corruption on Android) */
-        if (ANDROID_EXCLUDE_PATH && ANDROID_EXCLUDE_PATH[0] != '\0') {
-            int i;
-            for (i = 0; list_max < EXCLUDE_LIST_SIZE; ) {
-                int j, len;
-                for (j = i; ANDROID_EXCLUDE_PATH[j] != ':' && ANDROID_EXCLUDE_PATH[j] != '\0'; j++);
-                len = j - i;
-                if (len >= EXCLUDE_PATH_MAX) len = EXCLUDE_PATH_MAX - 1;
-                exclude_list[list_max] = exclude_list_storage[list_max];
-                memset(exclude_list[list_max], '\0', EXCLUDE_PATH_MAX);
-                strncpy(exclude_list[list_max], &(ANDROID_EXCLUDE_PATH[i]), len);
-                exclude_length[list_max] = strlen(exclude_list[list_max]);
-                list_max++;
-                if (ANDROID_EXCLUDE_PATH[j] != ':') break;
-                i = j + 1;
-            }
-        }
-
         /* Set process name for ps/top display */
         fakechroot_set_process_name();
     }
@@ -231,7 +212,7 @@ LOCAL int fakechroot_localdir (const char * p_path)
     /* We try to find if we need direct access to a file */
     {
         const size_t len = strlen(v_path);
-        int i;
+        size_t i;
 
         for (i = 0; i < list_max; i++) {
             if (exclude_length[i] > len ||

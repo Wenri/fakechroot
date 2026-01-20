@@ -222,8 +222,10 @@ LOCAL size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf
 {
     size_t total = 0;
     char *bufptr = envbuf;
-    unsigned int j, envpos = 0;
-    char *key, *env;
+    size_t j;
+    unsigned int envpos = 0;
+    const char *key;
+    char *env;
     char **ep;
     char tmpkey[1024], *tp;
     int skip;
@@ -249,13 +251,15 @@ LOCAL size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf
                 }
             }
             if (!skip) {
-                size_t len = strlen(key) + strlen(env) + 2;
+                size_t keylen = strlen(key);
+                size_t envlen = strlen(env);
+                size_t len = keylen + envlen + 2;
                 total += len;
                 if (newenvp) {
                     newenvp[envpos] = bufptr;
-                    strcpy(bufptr, key);
-                    strcat(bufptr, "=");
-                    strcat(bufptr, env);
+                    memcpy(bufptr, key, keylen);
+                    bufptr[keylen] = '=';
+                    memcpy(bufptr + keylen + 1, env, envlen + 1);
                     bufptr += len;
                     envpos++;
                 }

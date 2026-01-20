@@ -42,8 +42,10 @@ extern int __clearenv(void);
 
 wrapper(clearenv, int, (void))
 {
-    int j, n;
-    char *key, *env;
+    size_t j;
+    int n;
+    const char *key;
+    char *env;
     char **tmpkey, **tmpenv;
 
     debug("clearenv()");

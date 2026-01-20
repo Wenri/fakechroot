@@ -55,39 +55,52 @@
 LOCAL void dedotdot(char * file)
 {
     char c, *cp, *cp2;
-    int l;
+    size_t file_len, tail_len;
 
     if (!file || !*file)
         return;
+
+    file_len = strlen(file);
 
     /* Collapse any multiple / sequences. */
     while ((cp = strstr(file, "//")) != (char*) 0) {
         for (cp2 = cp + 2; *cp2 == '/'; ++cp2)
             continue;
-        (void) strlcpy(cp + 1, cp2, strlen(cp2) + 1);
+        tail_len = file_len - (size_t)(cp2 - file);
+        memmove(cp + 1, cp2, tail_len + 1);
+        file_len = (size_t)(cp - file) + 1 + tail_len;
     }
 
     /* Remove leading ./ and any /./ sequences. */
-    while (strncmp(file, "./", 2) == 0)
-        (void) strlcpy(file, file + 2, strlen(file) - 1);
-    while ((cp = strstr(file, "/./")) != (char*) 0)
-        (void) strlcpy(cp, cp + 2, strlen(cp) - 1);
+    while (strncmp(file, "./", 2) == 0) {
+        file_len -= 2;
+        memmove(file, file + 2, file_len + 1);
+    }
+    while ((cp = strstr(file, "/./")) != (char*) 0) {
+        tail_len = file_len - (size_t)(cp - file) - 2;
+        memmove(cp, cp + 2, tail_len + 1);
+        file_len -= 2;
+    }
 
     /* Alternate between removing leading ../ and removing foo/../ */
     for (;;) {
-        while (strncmp(file, "/../", 4) == 0)
-            (void) strlcpy(file, file + 3, strlen(file) - 2);
+        while (strncmp(file, "/../", 4) == 0) {
+            file_len -= 3;
+            memmove(file, file + 3, file_len + 1);
+        }
         cp = strstr(file, "/../");
         if (cp == (char*) 0 || strncmp(file, "../", 3) == 0)
             break;
         for (cp2 = cp - 1; cp2 >= file && *cp2 != '/'; --cp2)
             continue;
-        (void) strlcpy(cp2 + 1, cp + 4, strlen(cp) - 3);
+        tail_len = file_len - (size_t)(cp - file) - 3;
+        memmove(cp2 + 1, cp + 4, tail_len + 1);
+        file_len = (size_t)(cp2 - file) + 1 + tail_len;
     }
 
     /* Also elide any foo/.. at the end. */
-    while (strncmp(file, "../", 3) != 0 && (l = strlen(file)) > 3
-            && strcmp((cp = file + l - 3), "/..") == 0) {
+    while (strncmp(file, "../", 3) != 0 && file_len > 3
+            && strcmp((cp = file + file_len - 3), "/..") == 0) {
 
         for (cp2 = cp - 1; cp2 > file && *cp2 != '/'; --cp2)
             continue;
@@ -99,22 +112,27 @@ LOCAL void dedotdot(char * file)
 
         c = *cp2;
         *cp2 = '\0';
+        file_len = (size_t)(cp2 - file);
 
         if (file == cp2 && c == '/') {
             strcpy(file, "/");
+            file_len = 1;
         }
     }
 
     /* Correct some paths */
     if (*file == '\0') {
         strcpy(file, ".");
+        file_len = 1;
     }
     else if (strcmp(file, "/.") == 0 || strcmp(file, "/..") == 0) {
         strcpy(file, "/");
+        file_len = 1;
     }
 
-    /* Any /. and the end */
-    for (l = strlen(file); l > 3 && strcmp((cp = file + l - 2), "/.") == 0; l -= 2) {
+    /* Any /. at the end */
+    while (file_len > 3 && strcmp((cp = file + file_len - 2), "/.") == 0) {
         *cp = '\0';
+        file_len -= 2;
     }
 }

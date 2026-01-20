@@ -103,8 +103,11 @@ wrapper(chroot, int, (const char * path))
     }
 
     /* Suppress a trailing slash */
-    if ((strlen(tmpptr) > 1) && path[strlen(tmpptr) - 1] == '/') {
-        tmpptr[strlen(tmpptr) - 1] = '\0';
+    {
+        size_t tmplen = strlen(tmpptr);
+        if ((tmplen > 1) && tmpptr[tmplen - 1] == '/') {
+            tmpptr[tmplen - 1] = '\0';
+        }
     }
 
     if ((status = STAT(path, &sb)) != 0) {

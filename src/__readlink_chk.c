@@ -52,22 +52,23 @@ wrapper(__readlink_chk, ssize_t, (const char * path, char * buf, size_t bufsiz, 
     tmp[linksize] = '\0';
 
     if (fakechroot_base != NULL) {
+        const size_t base_len = strlen(fakechroot_base);
         tmpptr = strstr(tmp, fakechroot_base);
         if (tmpptr != tmp) {
             tmpptr = tmp;
         }
-        else if (tmp[strlen(fakechroot_base)] == '\0') {
+        else if (tmp[base_len] == '\0') {
             tmpptr = "/";
-            linksize = strlen(tmpptr);
+            linksize = 1;
         }
-        else if (tmp[strlen(fakechroot_base)] == '/') {
-            tmpptr = tmp + strlen(fakechroot_base);
-            linksize -= strlen(fakechroot_base);
+        else if (tmp[base_len] == '/') {
+            tmpptr = tmp + base_len;
+            linksize -= base_len;
         }
         else {
             tmpptr = tmp;
         }
-        if (strlen(tmpptr) > bufsiz) {
+        if ((size_t)linksize > bufsiz) {
             linksize = bufsiz;
         }
         strncpy(buf, tmpptr, linksize);

@@ -446,6 +446,19 @@ fi
 if test -n "$ANDROID_EXCLUDE_PATH"; then
     AC_DEFINE_UNQUOTED([ANDROID_EXCLUDE_PATH], ["$ANDROID_EXCLUDE_PATH"],
         [Paths excluded from chroot translation])
+
+    # Parse colon-separated paths into C initializer list
+    # Input: "/proc:/sys:/dev" -> Output: "/proc", "/sys", "/dev"
+    EXCLUDE_PATH_INIT=`echo "$ANDROID_EXCLUDE_PATH" | sed 's/:/", "/g'`
+    AC_DEFINE_UNQUOTED([EXCLUDE_PATH_INIT], ["$EXCLUDE_PATH_INIT"],
+        [Exclude paths as C initializer])
+
+    # Compute lengths: "/proc:/sys:/dev" -> 5, 4, 4
+    EXCLUDE_LENGTH_INIT=`echo "$ANDROID_EXCLUDE_PATH" | tr ':' '\n' | while read -r p; do
+        printf '%d, ' "${#p}"
+    done | sed 's/, $//'`
+    AC_DEFINE_UNQUOTED([EXCLUDE_LENGTH_INIT], [$EXCLUDE_LENGTH_INIT],
+        [Exclude path lengths as C initializer])
 fi
 
 AC_DEFINE([ANDROID_ARGV0_OPT], ["--argv0"], [Option for argv0 override in ld.so])
