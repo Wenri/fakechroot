@@ -87,11 +87,8 @@
 # define vfork fork
 #endif
 
-/* Forward declarations needed by inline functions below */
+/* Forward declaration needed by inline functions below */
 bool fakechroot_localdir (const char *);
-#ifndef snprintf
-int snprintf(char *, size_t, const char *, ...);
-#endif
 
 /* ANDROID_BASE is guaranteed non-empty by configure */
 /* Compile-time constant for ANDROID_BASE length */
