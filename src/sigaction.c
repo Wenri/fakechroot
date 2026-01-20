@@ -25,10 +25,13 @@
 #include <signal.h>
 #include <string.h>
 #include <errno.h>
+#include <unistd.h>       /* syscall() */
 #include <sys/ucontext.h>
 #include <sys/syscall.h>
+#include <fcntl.h>        /* AT_FDCWD, AT_REMOVEDIR */
 #include "libfakechroot.h"
 #include "android_syscalls.h"
+#include "syscall_macros.h"
 
 #ifndef SYS_SECCOMP
 #define SYS_SECCOMP 1
@@ -97,10 +100,10 @@
  * Note: We only check specific syscalls here rather than returning ENOSYS
  * for all SIGSYS signals, to avoid interfering with legitimate SIGSYS uses.
  *
- * Syscall check functions are defined in android_syscalls.h:
- * - is_noop_syscall(): Category 2 uid/gid syscalls that return 0
- * - is_blocked_syscall(): Category 3 blocked syscalls that return ENOSYS
- * - is_redirect_syscall(): Category 1 redirect syscalls (ENOSYS fallback)
+ * Syscall handling is split across two files:
+ * - android_syscalls.h: is_noop_syscall() and is_blocked_syscall()
+ * - syscall_macros.h: REDIRECT_TABLE for Category 1 syscall redirects
+ *   (e.g., faccessat2 -> faccessat), expanded via handle_sigsys_redirect()
  */
 
 /* Saved SIGSYS handler from other code (e.g., Go runtime) */
@@ -109,9 +112,103 @@
 struct sigaction saved_sigsys_handler;
 
 /*
+ * Handle redirect syscalls by calling target syscall directly.
+ * Uses REDIRECT_TABLE from syscall_macros.h (single source of truth).
+ * Returns 1 if handled (and sets return value), 0 if not a redirect syscall.
+ *
+ * Note: Unlike the syscall() wrapper in syscall.c, we cannot do path expansion
+ * here because we're in a signal handler context. However, this is acceptable:
+ * - Raw syscalls that bypass glibc typically use absolute paths
+ * - The main benefit is avoiding the ENOSYS retry overhead
+ */
+static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
+{
+    long ret;
+
+    switch (syscall_nr) {
+
+/* Define X-macros to expand REDIRECT_TABLE with register access */
+#define AT_REDIRECT_X(from, to, extra) \
+    case SYS_##from: \
+        ret = syscall(SYS_##to, SIGSYS_REG(ctx, 0), SIGSYS_REG(ctx, 1), SIGSYS_REG(ctx, 2)); \
+        debug("sigsys: " #from " -> " #to " = %ld", ret); \
+        goto set_return;
+
+#define PATH_REDIRECT_0_X(from, to, extra) \
+    case SYS_##from: \
+        ret = syscall(SYS_##to, AT_FDCWD, SIGSYS_REG(ctx, 0), extra); \
+        debug("sigsys: " #from " -> " #to " = %ld", ret); \
+        goto set_return;
+
+#define PATH_REDIRECT_1_X(from, to, extra) \
+    case SYS_##from: \
+        ret = syscall(SYS_##to, AT_FDCWD, SIGSYS_REG(ctx, 0), SIGSYS_REG(ctx, 1), extra); \
+        debug("sigsys: " #from " -> " #to " = %ld", ret); \
+        goto set_return;
+
+#define PATH_REDIRECT_2_X(from, to, extra) \
+    case SYS_##from: \
+        ret = syscall(SYS_##to, AT_FDCWD, SIGSYS_REG(ctx, 0), SIGSYS_REG(ctx, 1), SIGSYS_REG(ctx, 2), extra); \
+        debug("sigsys: " #from " -> " #to " = %ld", ret); \
+        goto set_return;
+
+#define REDIRECT_0_X(from, to, extra) \
+    case SYS_##from: \
+        ret = syscall(SYS_##to, extra); \
+        debug("sigsys: " #from " -> " #to " = %ld", ret); \
+        goto set_return;
+
+#define REDIRECT_3_X(from, to, extra) \
+    case SYS_##from: \
+        ret = syscall(SYS_##to, SIGSYS_REG(ctx, 0), SIGSYS_REG(ctx, 1), SIGSYS_REG(ctx, 2), extra); \
+        debug("sigsys: " #from " -> " #to " = %ld", ret); \
+        goto set_return;
+
+#define REDIRECT_4_2_X(from, to, e1, e2) \
+    case SYS_##from: \
+        ret = syscall(SYS_##to, SIGSYS_REG(ctx, 0), SIGSYS_REG(ctx, 1), SIGSYS_REG(ctx, 2), SIGSYS_REG(ctx, 3), e1, e2); \
+        debug("sigsys: " #from " -> " #to " = %ld", ret); \
+        goto set_return;
+
+#define SYMLINK_REDIRECT_X(from, to) \
+    case SYS_##from: \
+        ret = syscall(SYS_##to, SIGSYS_REG(ctx, 0), AT_FDCWD, SIGSYS_REG(ctx, 1)); \
+        debug("sigsys: " #from " -> " #to " = %ld", ret); \
+        goto set_return;
+
+#define LINK_REDIRECT_X(from, to) \
+    case SYS_##from: \
+        ret = syscall(SYS_##to, AT_FDCWD, SIGSYS_REG(ctx, 0), AT_FDCWD, SIGSYS_REG(ctx, 1), 0); \
+        debug("sigsys: " #from " -> " #to " = %ld", ret); \
+        goto set_return;
+
+    /* Expand REDIRECT_TABLE - generates all redirect case statements */
+    REDIRECT_TABLE
+
+#undef AT_REDIRECT_X
+#undef PATH_REDIRECT_0_X
+#undef PATH_REDIRECT_1_X
+#undef PATH_REDIRECT_2_X
+#undef REDIRECT_0_X
+#undef REDIRECT_3_X
+#undef REDIRECT_4_2_X
+#undef SYMLINK_REDIRECT_X
+#undef LINK_REDIRECT_X
+
+    default:
+        return 0;  /* Not handled */
+    }
+
+set_return:
+    SIGSYS_SET_RETURN(ctx, ret);
+    return 1;  /* Handled */
+}
+
+/*
  * SIGSYS handler for Android seccomp bypass.
  * When Android's seccomp blocks syscalls, it sends SIGSYS.
  * We intercept this and return appropriate values:
+ * - Redirected result for redirect syscalls (e.g., faccessat2 -> faccessat)
  * - 0 for uid/gid syscalls (no-op on Android)
  * - ENOSYS for other blocked syscalls (triggers program fallback)
  */
@@ -124,28 +221,21 @@ static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
     ucontext_t *ctx = (ucontext_t *)ucontext;
     int syscall_nr = info->si_syscall;
 
+    /* Category 1: Redirect syscalls - call target syscall directly */
+    if (handle_sigsys_redirect(ctx, syscall_nr)) {
+        return;
+    }
+
     /* Category 2: uid/gid syscalls return 0 (success, no-op) */
     if (is_noop_syscall(syscall_nr)) {
-#ifdef __aarch64__
-        ctx->uc_mcontext.regs[0] = 0;
-#endif
-#ifdef __x86_64__
-        ctx->uc_mcontext.gregs[REG_RAX] = 0;
-#endif
+        SIGSYS_SET_RETURN(ctx, 0);
         debug("sigsys: syscall %d -> 0 (noop)", syscall_nr);
         return;
     }
 
     /* Category 3: blocked syscalls return ENOSYS */
-    /* Category 1 fallback: redirect syscalls also return ENOSYS when */
-    /* raw syscalls bypass our wrapper and hit seccomp directly */
-    if (is_blocked_syscall(syscall_nr) || is_redirect_syscall(syscall_nr)) {
-#ifdef __aarch64__
-        ctx->uc_mcontext.regs[0] = -ENOSYS;
-#endif
-#ifdef __x86_64__
-        ctx->uc_mcontext.gregs[REG_RAX] = -ENOSYS;
-#endif
+    if (is_blocked_syscall(syscall_nr)) {
+        SIGSYS_SET_RETURN(ctx, -ENOSYS);
         debug("sigsys: syscall %d -> ENOSYS", syscall_nr);
         return;
     }

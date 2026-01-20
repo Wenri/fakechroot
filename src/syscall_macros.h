@@ -215,4 +215,146 @@
         return nextcall(syscall)(target, AT_FDCWD, oldpath, AT_FDCWD, newpath, 0); \
     }
 
+/*
+ * ============================================================================
+ * SIGSYS Register Access (for signal handler context)
+ *
+ * These macros extract syscall arguments from the ucontext registers when
+ * handling SIGSYS signals from Android's seccomp filter.
+ * ============================================================================
+ */
+#ifdef __aarch64__
+#define SIGSYS_REG(ctx, n) ((long)(ctx)->uc_mcontext.regs[n])
+#define SIGSYS_SET_RETURN(ctx, val) ((ctx)->uc_mcontext.regs[0] = (val))
+#endif
+
+#ifdef __x86_64__
+#include <sys/ucontext.h>
+/* x86_64 syscall argument registers: rdi, rsi, rdx, r10, r8, r9 */
+#define SIGSYS_REG(ctx, n) ((long)(ctx)->uc_mcontext.gregs[ \
+    (n) == 0 ? REG_RDI : \
+    (n) == 1 ? REG_RSI : \
+    (n) == 2 ? REG_RDX : \
+    (n) == 3 ? REG_R10 : \
+    (n) == 4 ? REG_R8 : REG_R9])
+#define SIGSYS_SET_RETURN(ctx, val) ((ctx)->uc_mcontext.gregs[REG_RAX] = (val))
+#endif
+
+/*
+ * ============================================================================
+ * Redirect Table - Single source of truth for all syscall redirects
+ *
+ * This X-macro table defines all syscall redirects in one place.
+ * It is expanded differently in syscall.c (va_arg + path expansion) and
+ * sigaction.c (register access for SIGSYS handler).
+ *
+ * X-macro patterns:
+ *   AT_REDIRECT_X(from, to, extra)      - AT syscall drops last arg, adds extra
+ *   PATH_REDIRECT_0_X(from, to, extra)  - path → AT_FDCWD + path + extra
+ *   PATH_REDIRECT_1_X(from, to, extra)  - path + 1 arg → AT_FDCWD + path + arg + extra
+ *   PATH_REDIRECT_2_X(from, to, extra)  - path + 2 args → AT_FDCWD + path + args + extra
+ *   REDIRECT_0_X(from, to, extra)       - no args → extra
+ *   REDIRECT_3_X(from, to, extra)       - 3 args → 3 args + extra
+ *   REDIRECT_4_2_X(from, to, e1, e2)    - 4 args → 4 args + 2 extras
+ *   SYMLINK_REDIRECT_X(from, to)        - target + path → target + AT_FDCWD + path
+ *   LINK_REDIRECT_X(from, to)           - old + new → AT_FDCWD + old + AT_FDCWD + new + 0
+ *
+ * Note: Each entry is wrapped in #ifdef because some syscalls don't exist on
+ * all architectures (e.g., chmod, chown, rmdir are x86-only legacy syscalls;
+ * aarch64 only has the *at versions).
+ * ============================================================================
+ */
+
+/* Newer syscalls that have older fallbacks */
+#ifdef SYS_faccessat2
+#define REDIRECT_faccessat2 AT_REDIRECT_X(faccessat2, faccessat, 0)
+#else
+#define REDIRECT_faccessat2
+#endif
+
+#ifdef SYS_fchmodat2
+#define REDIRECT_fchmodat2 AT_REDIRECT_X(fchmodat2, fchmodat, 0)
+#else
+#define REDIRECT_fchmodat2
+#endif
+
+/* Legacy syscalls redirected to *at versions (x86 only) */
+#ifdef SYS_chmod
+#define REDIRECT_chmod PATH_REDIRECT_1_X(chmod, fchmodat, 0)
+#else
+#define REDIRECT_chmod
+#endif
+
+#ifdef SYS_chown
+#define REDIRECT_chown PATH_REDIRECT_2_X(chown, fchownat, 0)
+#else
+#define REDIRECT_chown
+#endif
+
+#ifdef SYS_chown32
+#define REDIRECT_chown32 PATH_REDIRECT_2_X(chown32, fchownat, 0)
+#else
+#define REDIRECT_chown32
+#endif
+
+#ifdef SYS_rmdir
+#define REDIRECT_rmdir PATH_REDIRECT_0_X(rmdir, unlinkat, AT_REMOVEDIR)
+#else
+#define REDIRECT_rmdir
+#endif
+
+/* Socket syscalls (may be legacy on some archs) */
+#ifdef SYS_accept
+#define REDIRECT_accept REDIRECT_3_X(accept, accept4, 0)
+#else
+#define REDIRECT_accept
+#endif
+
+#ifdef SYS_recv
+#define REDIRECT_recv REDIRECT_4_2_X(recv, recvfrom, 0, 0)
+#else
+#define REDIRECT_recv
+#endif
+
+#ifdef SYS_send
+#define REDIRECT_send REDIRECT_4_2_X(send, sendto, 0, 0)
+#else
+#define REDIRECT_send
+#endif
+
+/* Process syscalls */
+#ifdef SYS_getpgrp
+#define REDIRECT_getpgrp REDIRECT_0_X(getpgrp, getpgid, 0)
+#else
+#define REDIRECT_getpgrp
+#endif
+
+/* Filesystem syscalls */
+#ifdef SYS_symlink
+#define REDIRECT_symlink SYMLINK_REDIRECT_X(symlink, symlinkat)
+#else
+#define REDIRECT_symlink
+#endif
+
+#ifdef SYS_link
+#define REDIRECT_link LINK_REDIRECT_X(link, linkat)
+#else
+#define REDIRECT_link
+#endif
+
+/* Combined redirect table - expands to all defined redirects */
+#define REDIRECT_TABLE \
+    REDIRECT_faccessat2 \
+    REDIRECT_fchmodat2 \
+    REDIRECT_chmod \
+    REDIRECT_chown \
+    REDIRECT_chown32 \
+    REDIRECT_rmdir \
+    REDIRECT_accept \
+    REDIRECT_recv \
+    REDIRECT_send \
+    REDIRECT_getpgrp \
+    REDIRECT_symlink \
+    REDIRECT_link
+
 #endif /* SYSCALL_MACROS_H */

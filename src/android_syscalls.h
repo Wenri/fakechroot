@@ -23,7 +23,10 @@
  * Defines syscall categories for Android seccomp bypass:
  * - Category 2: uid/gid syscalls that return 0 (no-op)
  * - Category 3: Blocked syscalls that return ENOSYS
- * - Category 1 fallback: Redirect syscalls for SIGSYS handler
+ *
+ * Note: Category 1 (redirect syscalls like faccessat2 → faccessat) are now
+ * handled directly via REDIRECT_TABLE in syscall_macros.h, which expands
+ * differently in syscall.c (wrapper) and sigaction.c (SIGSYS handler).
  *
  * Used by both syscall.c (wrapper) and sigaction.c (SIGSYS handler).
  */
@@ -149,9 +152,9 @@ static inline int is_noop_syscall(int syscall_nr)
  * (Category 3 in syscall.c wrapper)
  *
  * Note: This does NOT include Category 1 syscalls (redirects like
- * faccessat2 → faccessat). Those are handled separately in syscall.c
- * with redirect logic. The SIGSYS handler uses is_redirect_syscall()
- * for those.
+ * faccessat2 → faccessat). Those are handled via REDIRECT_TABLE in
+ * syscall_macros.h, which generates redirect code for both the
+ * syscall() wrapper and SIGSYS handler.
  */
 static inline int is_blocked_syscall(int syscall_nr)
 {
@@ -329,57 +332,6 @@ static inline int is_blocked_syscall(int syscall_nr)
 #endif
 #ifdef SYS_pidfd_send_signal
     case SYS_pidfd_send_signal:
-#endif
-        return 1;
-    default:
-        return 0;
-    }
-}
-
-/*
- * Check if syscall is a Category 1 redirect syscall.
- * These are redirected in syscall() wrapper (e.g., faccessat2 → faccessat),
- * but need ENOSYS fallback in SIGSYS handler when raw syscalls bypass
- * the wrapper and trigger SIGSYS directly.
- */
-static inline int is_redirect_syscall(int syscall_nr)
-{
-    switch (syscall_nr) {
-#ifdef SYS_chmod
-    case SYS_chmod:
-#endif
-#ifdef SYS_fchmodat2
-    case SYS_fchmodat2:
-#endif
-#ifdef SYS_chown
-    case SYS_chown:
-#endif
-#ifdef SYS_chown32
-    case SYS_chown32:
-#endif
-#ifdef SYS_accept
-    case SYS_accept:
-#endif
-#ifdef SYS_recv
-    case SYS_recv:
-#endif
-#ifdef SYS_send
-    case SYS_send:
-#endif
-#ifdef SYS_symlink
-    case SYS_symlink:
-#endif
-#ifdef SYS_link
-    case SYS_link:
-#endif
-#ifdef SYS_rmdir
-    case SYS_rmdir:
-#endif
-#ifdef SYS_getpgrp
-    case SYS_getpgrp:
-#endif
-#ifdef SYS_faccessat2
-    case SYS_faccessat2:
 #endif
         return 1;
     default:

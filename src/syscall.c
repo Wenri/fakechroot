@@ -88,55 +88,41 @@ wrapper(syscall, long, (long number, ...))
 
     /* ================================================================
      * Android seccomp bypass - redirect blocked syscalls to alternatives
-     * Based on glibc's fakesyscall.json from Termux patches
-     * These use macros from syscall_macros.h to reduce boilerplate
+     * Uses REDIRECT_TABLE from syscall_macros.h (single source of truth)
      * ================================================================ */
 
-    /* --- Category 1: Redirect to replacement syscalls --- */
+    /* Define X-macros to expand REDIRECT_TABLE with va_arg + path expansion */
+#define AT_REDIRECT_X(from, to, extra) \
+    AT_REDIRECT_1(SYS_##from, SYS_##to, extra)
+#define PATH_REDIRECT_0_X(from, to, extra) \
+    PATH_REDIRECT_0(SYS_##from, SYS_##to, extra)
+#define PATH_REDIRECT_1_X(from, to, extra) \
+    PATH_REDIRECT_1(SYS_##from, SYS_##to, extra)
+#define PATH_REDIRECT_2_X(from, to, extra) \
+    PATH_REDIRECT_2(SYS_##from, SYS_##to, extra)
+#define REDIRECT_0_X(from, to, extra) \
+    REDIRECT_0(SYS_##from, SYS_##to, extra)
+#define REDIRECT_3_X(from, to, extra) \
+    REDIRECT_3(SYS_##from, SYS_##to, extra)
+#define REDIRECT_4_2_X(from, to, e1, e2) \
+    REDIRECT_4_2(SYS_##from, SYS_##to, e1, e2)
+#define SYMLINK_REDIRECT_X(from, to) \
+    SYMLINK_REDIRECT(SYS_##from, SYS_##to)
+#define LINK_REDIRECT_X(from, to) \
+    LINK_REDIRECT(SYS_##from, SYS_##to)
 
-    /* AT redirects: syscall(dirfd, path, arg) -> target(dirfd, path, arg, extra) */
-#ifdef SYS_faccessat2
-    AT_REDIRECT_1(SYS_faccessat2, SYS_faccessat, 0)
-#endif
-#ifdef SYS_fchmodat2
-    AT_REDIRECT_1(SYS_fchmodat2, SYS_fchmodat, 0)
-#endif
+    /* Expand REDIRECT_TABLE - generates all redirect case statements */
+    REDIRECT_TABLE
 
-    /* Path redirects: syscall(path, args) -> target(AT_FDCWD, path, args, extra) */
-#ifdef SYS_chmod
-    PATH_REDIRECT_1(SYS_chmod, SYS_fchmodat, 0)
-#endif
-#ifdef SYS_chown
-    PATH_REDIRECT_2(SYS_chown, SYS_fchownat, 0)
-#endif
-#ifdef SYS_chown32
-    PATH_REDIRECT_2(SYS_chown32, SYS_fchownat, 0)
-#endif
-#ifdef SYS_rmdir
-    PATH_REDIRECT_0(SYS_rmdir, SYS_unlinkat, AT_REMOVEDIR)
-#endif
-
-    /* Non-path redirects: syscall(args) -> target(args, extra) */
-#ifdef SYS_accept
-    REDIRECT_3(SYS_accept, SYS_accept4, 0)
-#endif
-#ifdef SYS_recv
-    REDIRECT_4_2(SYS_recv, SYS_recvfrom, NULL, NULL)
-#endif
-#ifdef SYS_send
-    REDIRECT_4_2(SYS_send, SYS_sendto, NULL, 0)
-#endif
-#ifdef SYS_getpgrp
-    REDIRECT_0(SYS_getpgrp, SYS_getpgid, 0)
-#endif
-
-    /* Special cases: symlink/link with multiple paths */
-#ifdef SYS_symlink
-    SYMLINK_REDIRECT(SYS_symlink, SYS_symlinkat)
-#endif
-#ifdef SYS_link
-    LINK_REDIRECT(SYS_link, SYS_linkat)
-#endif
+#undef AT_REDIRECT_X
+#undef PATH_REDIRECT_0_X
+#undef PATH_REDIRECT_1_X
+#undef PATH_REDIRECT_2_X
+#undef REDIRECT_0_X
+#undef REDIRECT_3_X
+#undef REDIRECT_4_2_X
+#undef SYMLINK_REDIRECT_X
+#undef LINK_REDIRECT_X
 
     /* --- Category 2 & 3: Use shared functions from android_syscalls.h --- */
     /* Category 2 (uid/gid no-ops) and Category 3 (blocked syscalls) are now */
