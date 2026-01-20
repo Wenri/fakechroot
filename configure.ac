@@ -447,6 +447,10 @@ if test -n "$ANDROID_EXCLUDE_PATH"; then
     AC_DEFINE_UNQUOTED([ANDROID_EXCLUDE_PATH], ["$ANDROID_EXCLUDE_PATH"],
         [Paths excluded from chroot translation])
 
+    # Check for Boost.Preprocessor headers (required for exclude path generation)
+    AC_CHECK_HEADERS([boost/preprocessor/seq/for_each.hpp boost/preprocessor/seq/size.hpp], [],
+        [AC_MSG_ERROR([Boost.Preprocessor headers required for ANDROID_EXCLUDE_PATH])])
+
     # Generate Boost.PP sequence from colon-separated paths
     # Input: "/proc:/sys:/dev" -> Output: ("/proc")("/sys")("/dev")
     EXCLUDE_PATH_SEQ=`echo "$ANDROID_EXCLUDE_PATH" | sed 's/\([[^:]]*\)/("\1")/g; s/://g'`
