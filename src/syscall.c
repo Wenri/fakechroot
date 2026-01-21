@@ -123,12 +123,13 @@ wrapper(syscall, long, (long number, ...))
     /* Done: cleanup and return */
 #define SYSCALL_DONE(val) do { va_end(ap); return val; } while(0)
 
-    /* Dispatch macro for BOOST_PP_SEQ_FOR_EACH */
+    /* Dispatch macro for BOOST_PP_SEQ_FOR_EACH - extracts all 5 tuple elements */
 #define SYSCALL_DISPATCH(r, data, elem) \
     BOOST_PP_CAT(SYS_GEN_, BOOST_PP_TUPLE_ELEM(0, elem))( \
         BOOST_PP_TUPLE_ELEM(1, elem), \
         BOOST_PP_TUPLE_ELEM(2, elem), \
         BOOST_PP_TUPLE_ELEM(3, elem), \
+        BOOST_PP_TUPLE_ELEM(4, elem), \
         SYSCALL_SETUP(ap), SYSCALL_DONE)
 
     /* Expand REDIRECT_SEQ - generates all redirect case statements */

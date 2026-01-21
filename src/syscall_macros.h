@@ -128,57 +128,63 @@ typedef ucontext_t * sigsys_ctx_t;
  * ============================================================================
  */
 
-/* AT syscall: syscall(dirfd, path, mode) -> target(dirfd, path, mode, extra) */
-#define SYS_GEN_AT(from, to, extra, ctx_expr, DONE) \
+/*
+ * All macros take 6 parameters: (from, to, e1, e2, ctx_expr, DONE)
+ * This allows uniform dispatch from REDIRECT_SEQ entries.
+ * Macros that don't need e2 (or both) simply ignore them.
+ */
+
+/* AT syscall: syscall(dirfd, path, mode) -> target(dirfd, path, mode, e1) */
+#define SYS_GEN_AT(from, to, e1, e2, ctx_expr, DONE) \
     case SYS_##from: { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), extra); \
+        long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
-/* Path with 0 args: syscall(path) -> target(AT_FDCWD, path, extra) */
-#define SYS_GEN_PATH0(from, to, extra, ctx_expr, DONE) \
+/* Path with 0 args: syscall(path) -> target(AT_FDCWD, path, e1) */
+#define SYS_GEN_PATH0(from, to, e1, e2, ctx_expr, DONE) \
     case SYS_##from: { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), extra); \
+        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
-/* Path with 1 arg: syscall(path, a2) -> target(AT_FDCWD, path, a2, extra) */
-#define SYS_GEN_PATH1(from, to, extra, ctx_expr, DONE) \
+/* Path with 1 arg: syscall(path, a2) -> target(AT_FDCWD, path, a2, e1) */
+#define SYS_GEN_PATH1(from, to, e1, e2, ctx_expr, DONE) \
     case SYS_##from: { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), extra); \
+        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
-/* Path with 2 args: syscall(path, a2, a3) -> target(AT_FDCWD, path, a2, a3, extra) */
-#define SYS_GEN_PATH2(from, to, extra, ctx_expr, DONE) \
+/* Path with 2 args: syscall(path, a2, a3) -> target(AT_FDCWD, path, a2, a3, e1) */
+#define SYS_GEN_PATH2(from, to, e1, e2, ctx_expr, DONE) \
     case SYS_##from: { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), extra); \
+        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
-/* 0 args: syscall() -> target(extra) */
-#define SYS_GEN_R0(from, to, extra, ctx_expr, DONE) \
+/* 0 args: syscall() -> target(e1) */
+#define SYS_GEN_R0(from, to, e1, e2, ctx_expr, DONE) \
     case SYS_##from: { \
         typeof(ctx_expr) _ctx = ctx_expr; \
         (void)_ctx; /* unused but needed for consistency */ \
-        long result = CTX_CALL(_ctx, SYS_##to, extra); \
+        long result = CTX_CALL(_ctx, SYS_##to, e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
-/* 3 args: syscall(a1, a2, a3) -> target(a1, a2, a3, extra) */
-#define SYS_GEN_R3(from, to, extra, ctx_expr, DONE) \
+/* 3 args: syscall(a1, a2, a3) -> target(a1, a2, a3, e1) */
+#define SYS_GEN_R3(from, to, e1, e2, ctx_expr, DONE) \
     case SYS_##from: { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), extra); \
+        long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -193,7 +199,7 @@ typedef ucontext_t * sigsys_ctx_t;
     }
 
 /* symlink(target, linkpath) -> symlinkat(target, AT_FDCWD, linkpath) */
-#define SYS_GEN_SYMLINK(from, to, _, ctx_expr, DONE) \
+#define SYS_GEN_SYMLINK(from, to, e1, e2, ctx_expr, DONE) \
     case SYS_##from: { \
         typeof(ctx_expr) _ctx = ctx_expr; \
         long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), AT_FDCWD, CTX_ARG(_ctx, 1)); \
@@ -202,7 +208,7 @@ typedef ucontext_t * sigsys_ctx_t;
     }
 
 /* link(oldpath, newpath) -> linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0) */
-#define SYS_GEN_LINK(from, to, _, ctx_expr, DONE) \
+#define SYS_GEN_LINK(from, to, e1, e2, ctx_expr, DONE) \
     case SYS_##from: { \
         typeof(ctx_expr) _ctx = ctx_expr; \
         long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), AT_FDCWD, CTX_ARG(_ctx, 1), 0); \
@@ -214,57 +220,59 @@ typedef ucontext_t * sigsys_ctx_t;
  * ============================================================================
  * Redirect Table as Boost.PP Sequence
  *
- * Each entry is a tuple: (PATTERN, from, to, extra)
- * - PATTERN: Generator macro suffix (AT, PATH0, PATH1, PATH2, R0, R3, SYMLINK, LINK)
+ * Each entry is a 5-tuple: (PATTERN, from, to, extra1, extra2)
+ * - PATTERN: Generator macro suffix (AT, PATH0, PATH1, PATH2, R0, R3, R4_2, SYMLINK, LINK)
  * - from: Source syscall name (without SYS_ prefix)
  * - to: Target syscall name (without SYS_ prefix)
- * - extra: Extra argument(s) - use _ for none, (e1, e2) for R4_2
+ * - extra1: First extra argument (use 0 or _ as placeholder)
+ * - extra2: Second extra argument (use 0 or _ as placeholder, only R4_2 uses both)
  *
+ * All entries have 5 elements for uniform dispatch. Unused extras are ignored.
  * Note: Entries are conditionally included based on SYS_* availability.
  * ============================================================================
  */
 
 /* Newer syscalls that have older fallbacks */
 #ifdef SYS_faccessat2
-#define REDIRECT_ENTRY_faccessat2 ((AT, faccessat2, faccessat, 0))
+#define REDIRECT_ENTRY_faccessat2 ((AT, faccessat2, faccessat, 0, _))
 #else
 #define REDIRECT_ENTRY_faccessat2
 #endif
 
 #ifdef SYS_fchmodat2
-#define REDIRECT_ENTRY_fchmodat2 ((AT, fchmodat2, fchmodat, 0))
+#define REDIRECT_ENTRY_fchmodat2 ((AT, fchmodat2, fchmodat, 0, _))
 #else
 #define REDIRECT_ENTRY_fchmodat2
 #endif
 
 /* Legacy syscalls redirected to *at versions (x86 only) */
 #ifdef SYS_chmod
-#define REDIRECT_ENTRY_chmod ((PATH1, chmod, fchmodat, 0))
+#define REDIRECT_ENTRY_chmod ((PATH1, chmod, fchmodat, 0, _))
 #else
 #define REDIRECT_ENTRY_chmod
 #endif
 
 #ifdef SYS_chown
-#define REDIRECT_ENTRY_chown ((PATH2, chown, fchownat, 0))
+#define REDIRECT_ENTRY_chown ((PATH2, chown, fchownat, 0, _))
 #else
 #define REDIRECT_ENTRY_chown
 #endif
 
 #ifdef SYS_chown32
-#define REDIRECT_ENTRY_chown32 ((PATH2, chown32, fchownat, 0))
+#define REDIRECT_ENTRY_chown32 ((PATH2, chown32, fchownat, 0, _))
 #else
 #define REDIRECT_ENTRY_chown32
 #endif
 
 #ifdef SYS_rmdir
-#define REDIRECT_ENTRY_rmdir ((PATH0, rmdir, unlinkat, AT_REMOVEDIR))
+#define REDIRECT_ENTRY_rmdir ((PATH0, rmdir, unlinkat, AT_REMOVEDIR, _))
 #else
 #define REDIRECT_ENTRY_rmdir
 #endif
 
 /* Socket syscalls (may be legacy on some archs) */
 #ifdef SYS_accept
-#define REDIRECT_ENTRY_accept ((R3, accept, accept4, 0))
+#define REDIRECT_ENTRY_accept ((R3, accept, accept4, 0, _))
 #else
 #define REDIRECT_ENTRY_accept
 #endif
@@ -283,20 +291,20 @@ typedef ucontext_t * sigsys_ctx_t;
 
 /* Process syscalls */
 #ifdef SYS_getpgrp
-#define REDIRECT_ENTRY_getpgrp ((R0, getpgrp, getpgid, 0))
+#define REDIRECT_ENTRY_getpgrp ((R0, getpgrp, getpgid, 0, _))
 #else
 #define REDIRECT_ENTRY_getpgrp
 #endif
 
 /* Filesystem syscalls */
 #ifdef SYS_symlink
-#define REDIRECT_ENTRY_symlink ((SYMLINK, symlink, symlinkat, _))
+#define REDIRECT_ENTRY_symlink ((SYMLINK, symlink, symlinkat, _, _))
 #else
 #define REDIRECT_ENTRY_symlink
 #endif
 
 #ifdef SYS_link
-#define REDIRECT_ENTRY_link ((LINK, link, linkat, _))
+#define REDIRECT_ENTRY_link ((LINK, link, linkat, _, _))
 #else
 #define REDIRECT_ENTRY_link
 #endif

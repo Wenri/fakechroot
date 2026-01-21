@@ -146,6 +146,7 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
         BOOST_PP_TUPLE_ELEM(1, elem), \
         BOOST_PP_TUPLE_ELEM(2, elem), \
         BOOST_PP_TUPLE_ELEM(3, elem), \
+        BOOST_PP_TUPLE_ELEM(4, elem), \
         sctx, SIGSYS_DONE)
 
     /* Expand REDIRECT_SEQ - generates all redirect case statements */
