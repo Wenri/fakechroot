@@ -148,10 +148,9 @@ static inline const char *expand_chroot_path_at(int dirfd, const char *path, cha
  */
 #define wrapper_stub(function, return_type, arguments) \
     static return_type fakechroot_##function##_stub arguments { \
-        fakechroot_##function##_nextfunc = \
-            (fakechroot_##function##_fn_t)dlsym(RTLD_NEXT, #function); \
-        __builtin_return(__builtin_apply( \
-            (void(*)())fakechroot_##function##_nextfunc, \
+        __builtin_return(__builtin_apply((void(*)())( \
+            fakechroot_##function##_nextfunc = \
+                (fakechroot_##function##_fn_t)dlsym(RTLD_NEXT, #function)), \
             __builtin_apply_args(), 0)); \
     }
 
