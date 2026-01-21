@@ -49,6 +49,8 @@
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/repetition/repeat.hpp>
 #include <boost/preprocessor/arithmetic/add.hpp>
+#include <boost/preprocessor/punctuation/comma_if.hpp>
+#include <boost/preprocessor/control/expr_if.hpp>
 
 /*
  * ============================================================================
@@ -111,15 +113,32 @@ wrapper_proto(syscall, long, (long, ...));
  * Macros that don't need e2 (or both) simply ignore them.
  */
 
-/* AT syscall: syscall(dirfd, path, mode) -> target(dirfd, path, mode, e1) */
-#define SYS_GEN_AT(from, to, e1, e2, DONE) \
+/* Helper: emit ", CTX_ARG(_ctx, n+2)" for BOOST_PP_REPEAT (args after dirfd,path start at index 2) */
+#define SYS_GEN_EMIT_ARG_FROM2(z, n, _) , CTX_ARG(_ctx, BOOST_PP_ADD(n, 2))
+
+/* Unified AT syscall implementation
+ * - nargs: number of trailing args after (dirfd, path)
+ * - append_e1: 1 to append e1, 0 to skip */
+#define SYS_GEN_AT_IMPL(from, to, nargs, append_e1, e1, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
         CTX_SETUP(_ctx); \
         const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
-        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2), e1); \
-        debug("redirect: " #from " -> " #to " = %ld", result); \
+        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path \
+            BOOST_PP_REPEAT(nargs, SYS_GEN_EMIT_ARG_FROM2, _) \
+            BOOST_PP_COMMA_IF(append_e1) BOOST_PP_EXPR_IF(append_e1, e1)); \
+        debug("syscall: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
+
+/* AT syscall redirect: syscall(dirfd, path, arg) -> target(dirfd, path, arg, e1)
+ * Wrapper with fixed nargs=1, always appends e1 */
+#define SYS_GEN_AT(from, to, e1, e2, DONE) \
+    SYS_GEN_AT_IMPL(from, to, 1, 1, e1, DONE)
+
+/* AT syscall passthrough: syscall(dirfd, path, ...) -> to(dirfd, path_expanded, ...)
+ * Wrapper with variable nargs from e2, no e1 append */
+#define SYS_GEN_AT_PASS(from, to, e1, e2, DONE) \
+    SYS_GEN_AT_IMPL(from, to, e2, 0, _, DONE)
 
 /* Helper: emit ", CTX_ARG(_ctx, n+1)" for BOOST_PP_REPEAT (args after path start at index 1) */
 #define SYS_GEN_EMIT_ARG_FROM1(z, n, _) , CTX_ARG(_ctx, BOOST_PP_ADD(n, 1))
@@ -186,20 +205,6 @@ wrapper_proto(syscall, long, (long, ...));
         DONE(result); \
     }
 
-/* Helper: emit ", CTX_ARG(_ctx, n+2)" for BOOST_PP_REPEAT (args after dirfd,path start at index 2) */
-#define SYS_GEN_EMIT_ARG_FROM2(z, n, _) , CTX_ARG(_ctx, BOOST_PP_ADD(n, 2))
-
-/* AT passthrough with N args: syscall(dirfd, path, ...) -> to(dirfd, path_expanded, ...)
- * e2 = number of trailing args after path (1, 2, or 3) */
-#define SYS_GEN_AT_PASS(from, to, e1, e2, DONE) \
-    case BOOST_PP_CAT(SYS_, from): { \
-        CTX_SETUP(_ctx); \
-        const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
-        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path \
-            BOOST_PP_REPEAT(e2, SYS_GEN_EMIT_ARG_FROM2, _)); \
-        debug("syscall: " #from " -> " #to " = %ld", result); \
-        DONE(result); \
-    }
 
 /*
  * ============================================================================
