@@ -114,6 +114,9 @@ wrapper(syscall, long, (long number, ...))
     /* Context-specific argument accessor for syscall_args_t */
 #define CTX_ARG(ctx, n) (ctx).a[n]
 
+    /* Context-specific syscall caller - use nextcall to bypass our own wrapper */
+#define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
+
     /* Setup: extract all va_args into syscall_args_t */
 #define SYSCALL_SETUP(ap) ((syscall_args_t){ \
     .a = { va_arg(ap, long), va_arg(ap, long), va_arg(ap, long), \
@@ -138,6 +141,7 @@ wrapper(syscall, long, (long number, ...))
 #undef SYSCALL_DISPATCH
 #undef SYSCALL_DONE
 #undef SYSCALL_SETUP
+#undef CTX_CALL
 #undef CTX_ARG
 
 #ifdef SYS_rt_sigaction

@@ -137,6 +137,9 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
     /* Context-specific argument accessor for sigsys_ctx_t (ucontext pointer) */
 #define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
 
+    /* Context-specific syscall caller - use raw syscall in signal handler */
+#define CTX_CALL(ctx, ...) syscall(__VA_ARGS__)
+
     /* Done: set return value and goto cleanup */
 #define SIGSYS_DONE(val) do { ret = val; goto set_return; } while(0)
 
@@ -154,6 +157,7 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 
 #undef SIGSYS_DISPATCH
 #undef SIGSYS_DONE
+#undef CTX_CALL
 #undef CTX_ARG
 
     default:

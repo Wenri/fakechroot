@@ -100,13 +100,14 @@ typedef ucontext_t * sigsys_ctx_t;
  * - syscall.c: #define CTX_ARG(ctx, n) (ctx).a[n]
  * - sigaction.c: #define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
  *
+ * Similarly, CTX_CALL must be defined per-file:
+ * - syscall.c: #define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
+ * - sigaction.c: #define CTX_CALL(ctx, ...) syscall(__VA_ARGS__)
+ *
  * Note: _Generic cannot be used here because both branches must be
  * syntactically valid, but (ctx).a[n] is invalid when ctx is a pointer.
  * ============================================================================
  */
-
-/* Both contexts use nextcall(syscall) for proper interception */
-#define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
 
 /*
  * ============================================================================
