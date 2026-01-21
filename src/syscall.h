@@ -79,15 +79,11 @@ typedef struct {
  *
  *
  * CTX_EXPAND_PATH - Path expansion for chroot (arg index):
- * - syscall.c: expand_chroot_path((const char *)CTX_ARG(ctx, n), fakechroot_buf)
+ * - syscall.c: expand_chroot_path(path, alloca(FAKECHROOT_PATH_MAX))
  * - sigaction.c: (const char *)CTX_ARG(ctx, n)  [no-op in signal handler]
  *
  * CTX_EXPAND_PATH_AT - Path expansion for AT syscalls (dirfd index, path index):
- * - syscall.c: expand_chroot_path_at(dirfd, path, fakechroot_buf)
- * - sigaction.c: (const char *)CTX_ARG(ctx, n)  [no-op in signal handler]
- *
- * CTX_EXPAND_PATH_2 - Second path expansion (for link() which needs 2 buffers):
- * - syscall.c: expand_chroot_path(path, fakechroot_buf2)
+ * - syscall.c: expand_chroot_path_at(dirfd, path, alloca(FAKECHROOT_PATH_MAX))
  * - sigaction.c: (const char *)CTX_ARG(ctx, n)  [no-op in signal handler]
  *
  * Note: _Generic cannot be used here because both branches must be
@@ -200,13 +196,12 @@ typedef struct {
         DONE(result); \
     }
 
-/* link(oldpath, newpath) -> linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0)
- * Note: Both paths are expanded (uses CTX_EXPAND_PATH_2 for newpath) */
+/* link(oldpath, newpath) -> linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0) */
 #define SYS_GEN_LINK(from, to, e1, e2, ctx_expr, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
         const char *_oldpath = CTX_EXPAND_PATH(_ctx, 0); \
-        const char *_newpath = CTX_EXPAND_PATH_2(_ctx, 1); \
+        const char *_newpath = CTX_EXPAND_PATH(_ctx, 1); \
         long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), AT_FDCWD, _oldpath, AT_FDCWD, _newpath, 0); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
@@ -336,7 +331,7 @@ typedef struct {
         long a3 = va_arg(ap, long); \
         va_end(ap); \
         debug("syscall(" #sysnum ", %d, \"%s\", %ld)", dirfd, pathname, a3); \
-        pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_buf); \
+        pathname = expand_chroot_path_at(dirfd, pathname, alloca(FAKECHROOT_PATH_MAX)); \
         return nextcall(syscall)(number, dirfd, pathname, a3); \
     }
 
@@ -349,7 +344,7 @@ typedef struct {
         long a4 = va_arg(ap, long); \
         va_end(ap); \
         debug("syscall(" #sysnum ", %d, \"%s\", ...)", dirfd, pathname); \
-        pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_buf); \
+        pathname = expand_chroot_path_at(dirfd, pathname, alloca(FAKECHROOT_PATH_MAX)); \
         return nextcall(syscall)(number, dirfd, pathname, a3, a4); \
     }
 
@@ -363,7 +358,7 @@ typedef struct {
         long a5 = va_arg(ap, long); \
         va_end(ap); \
         debug("syscall(" #sysnum ", %d, \"%s\", ...)", dirfd, pathname); \
-        pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_buf); \
+        pathname = expand_chroot_path_at(dirfd, pathname, alloca(FAKECHROOT_PATH_MAX)); \
         return nextcall(syscall)(number, dirfd, pathname, a3, a4, a5); \
     }
 

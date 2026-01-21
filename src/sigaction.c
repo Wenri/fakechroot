@@ -143,7 +143,6 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
     /* No path expansion in signal handler context - return raw argument */
 #define CTX_EXPAND_PATH(ctx, arg_n) ((const char *)CTX_ARG(ctx, arg_n))
 #define CTX_EXPAND_PATH_AT(ctx, dirfd_n, path_n) ((const char *)CTX_ARG(ctx, path_n))
-#define CTX_EXPAND_PATH_2(ctx, arg_n) ((const char *)CTX_ARG(ctx, arg_n))
 
     /* Done: set return value and goto cleanup */
 #define SIGSYS_DONE(val) do { ret = val; goto set_return; } while(0)
@@ -162,7 +161,6 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 
 #undef SIGSYS_DISPATCH
 #undef SIGSYS_DONE
-#undef CTX_EXPAND_PATH_2
 #undef CTX_EXPAND_PATH_AT
 #undef CTX_EXPAND_PATH
 #undef CTX_ARG

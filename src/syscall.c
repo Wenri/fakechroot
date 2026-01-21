@@ -44,6 +44,7 @@
 #include <unistd.h>       /* read, close */
 #include <sys/prctl.h>    /* prctl, PR_SET_NAME */
 #include <sys/socket.h>   /* socket types */
+#include <alloca.h>       /* alloca for stack-based path buffers */
 #include "libfakechroot.h"
 #include "android_syscalls.h"
 #include "syscall.h"
@@ -68,8 +69,6 @@ wrapper(syscall, long, (long number, ...))
         return -1;
     }
 
-    char fakechroot_buf[FAKECHROOT_PATH_MAX];
-    char fakechroot_buf2[FAKECHROOT_PATH_MAX];  /* Second buffer for link() */
     va_list ap;
     va_start(ap, number);
 
@@ -114,17 +113,14 @@ wrapper(syscall, long, (long number, ...))
     /* Context-specific argument accessor for syscall_args_t */
 #define CTX_ARG(ctx, n) (ctx).a[n]
 
-    /* Path expansion for syscall wrapper context */
+    /* Path expansion using alloca() for stack-based buffer allocation.
+     * Each expansion gets its own buffer, so link() works without special handling. */
 #define CTX_EXPAND_PATH(ctx, arg_n) \
-    expand_chroot_path((const char *)CTX_ARG(ctx, arg_n), fakechroot_buf)
+    expand_chroot_path((const char *)CTX_ARG(ctx, arg_n), alloca(FAKECHROOT_PATH_MAX))
 
 #define CTX_EXPAND_PATH_AT(ctx, dirfd_n, path_n) \
     expand_chroot_path_at((int)CTX_ARG(ctx, dirfd_n), \
-                          (const char *)CTX_ARG(ctx, path_n), fakechroot_buf)
-
-    /* Second buffer for link() which needs two path expansions */
-#define CTX_EXPAND_PATH_2(ctx, arg_n) \
-    expand_chroot_path((const char *)CTX_ARG(ctx, arg_n), fakechroot_buf2)
+                          (const char *)CTX_ARG(ctx, path_n), alloca(FAKECHROOT_PATH_MAX))
 
     /* Setup: extract all va_args into syscall_args_t */
 #define SYSCALL_SETUP(ap) ((syscall_args_t){ \
@@ -150,7 +146,6 @@ wrapper(syscall, long, (long number, ...))
 #undef SYSCALL_DISPATCH
 #undef SYSCALL_DONE
 #undef SYSCALL_SETUP
-#undef CTX_EXPAND_PATH_2
 #undef CTX_EXPAND_PATH_AT
 #undef CTX_EXPAND_PATH
 #undef CTX_ARG
