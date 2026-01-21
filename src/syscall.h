@@ -35,7 +35,8 @@
  *
  * Patterns supported:
  * - SYS_GEN_AT: AT syscalls that drop last arg (faccessat2 -> faccessat)
- * - SYS_GEN_PATH0/1/2: Non-AT syscalls redirected to AT versions
+ * - SYS_GEN_AT_PASS: AT syscalls passthrough with path expansion (variable trailing args)
+ * - SYS_GEN_PATH: Non-AT syscalls redirected to AT versions (variable trailing args)
  * - SYS_GEN_R0/3/4_2: Non-path syscalls with different arg counts
  * - SYS_GEN_SYMLINK/LINK: Special multi-path syscalls
  */
@@ -46,6 +47,8 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/tuple/elem.hpp>
 #include <boost/preprocessor/cat.hpp>
+#include <boost/preprocessor/repetition/repeat.hpp>
+#include <boost/preprocessor/arithmetic/add.hpp>
 
 /*
  * ============================================================================
@@ -118,32 +121,17 @@ wrapper_proto(syscall, long, (long, ...));
         DONE(result); \
     }
 
-/* Path with 0 args: syscall(path) -> target(AT_FDCWD, path, e1) */
-#define SYS_GEN_PATH0(from, to, e1, e2, DONE) \
-    case BOOST_PP_CAT(SYS_, from): { \
-        CTX_SETUP(_ctx); \
-        const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
-        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, e1); \
-        debug("redirect: " #from " -> " #to " = %ld", result); \
-        DONE(result); \
-    }
+/* Helper: emit ", CTX_ARG(_ctx, n+1)" for BOOST_PP_REPEAT (args after path start at index 1) */
+#define SYS_GEN_EMIT_ARG_FROM1(z, n, _) , CTX_ARG(_ctx, BOOST_PP_ADD(n, 1))
 
-/* Path with 1 arg: syscall(path, a2) -> target(AT_FDCWD, path, a2, e1) */
-#define SYS_GEN_PATH1(from, to, e1, e2, DONE) \
+/* Path with N args: syscall(path, ...) -> target(AT_FDCWD, path, ..., e1)
+ * e2 = number of trailing args after path (0, 1, or 2) */
+#define SYS_GEN_PATH(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
         CTX_SETUP(_ctx); \
         const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
-        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, CTX_ARG(_ctx, 1), e1); \
-        debug("redirect: " #from " -> " #to " = %ld", result); \
-        DONE(result); \
-    }
-
-/* Path with 2 args: syscall(path, a2, a3) -> target(AT_FDCWD, path, a2, a3, e1) */
-#define SYS_GEN_PATH2(from, to, e1, e2, DONE) \
-    case BOOST_PP_CAT(SYS_, from): { \
-        CTX_SETUP(_ctx); \
-        const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
-        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
+        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path \
+            BOOST_PP_REPEAT(e2, SYS_GEN_EMIT_ARG_FROM1, _), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -198,32 +186,17 @@ wrapper_proto(syscall, long, (long, ...));
         DONE(result); \
     }
 
-/* AT syscall with 1 extra arg: syscall(dirfd, path, a3) -> to(dirfd, path_expanded, a3) */
-#define SYS_GEN_AT1(from, to, e1, e2, DONE) \
-    case BOOST_PP_CAT(SYS_, from): { \
-        CTX_SETUP(_ctx); \
-        const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
-        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2)); \
-        debug("syscall: " #from " -> " #to " = %ld", result); \
-        DONE(result); \
-    }
+/* Helper: emit ", CTX_ARG(_ctx, n+2)" for BOOST_PP_REPEAT (args after dirfd,path start at index 2) */
+#define SYS_GEN_EMIT_ARG_FROM2(z, n, _) , CTX_ARG(_ctx, BOOST_PP_ADD(n, 2))
 
-/* AT syscall with 2 extra args: syscall(dirfd, path, a3, a4) -> to(dirfd, path_expanded, a3, a4) */
-#define SYS_GEN_AT2(from, to, e1, e2, DONE) \
+/* AT passthrough with N args: syscall(dirfd, path, ...) -> to(dirfd, path_expanded, ...)
+ * e2 = number of trailing args after path (1, 2, or 3) */
+#define SYS_GEN_AT_PASS(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
         CTX_SETUP(_ctx); \
         const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
-        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2), CTX_ARG(_ctx, 3)); \
-        debug("syscall: " #from " -> " #to " = %ld", result); \
-        DONE(result); \
-    }
-
-/* AT syscall with 3 extra args: syscall(dirfd, path, a3, a4, a5) -> to(dirfd, path_expanded, a3, a4, a5) */
-#define SYS_GEN_AT3(from, to, e1, e2, DONE) \
-    case BOOST_PP_CAT(SYS_, from): { \
-        CTX_SETUP(_ctx); \
-        const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
-        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2), CTX_ARG(_ctx, 3), CTX_ARG(_ctx, 4)); \
+        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path \
+            BOOST_PP_REPEAT(e2, SYS_GEN_EMIT_ARG_FROM2, _)); \
         debug("syscall: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -232,14 +205,14 @@ wrapper_proto(syscall, long, (long, ...));
  * ============================================================================
  * Redirect Table as Boost.PP Sequence
  *
- * Each entry is a 5-tuple: (PATTERN, from, to, extra1, extra2)
- * - PATTERN: Generator macro suffix (AT, PATH0, PATH1, PATH2, R0, R3, R4_2, SYMLINK, LINK)
+ * Each entry is a 5-tuple: (PATTERN, from, to, e1, e2)
+ * - PATTERN: Generator macro suffix (AT, PATH, R0, R3, R4_2, SYMLINK, LINK)
  * - from: Source syscall name (without SYS_ prefix)
  * - to: Target syscall name (without SYS_ prefix)
- * - extra1: First extra argument (use 0 or _ as placeholder)
- * - extra2: Second extra argument (use 0 or _ as placeholder, only R4_2 uses both)
+ * - e1: Extra argument to append (use _ as placeholder if unused)
+ * - e2: For PATH/AT_PASS: number of trailing args; for R4_2: second extra arg
  *
- * All entries have 5 elements for uniform dispatch. Unused extras are ignored.
+ * All entries have 5 elements for uniform dispatch.
  * Note: Entries are conditionally included based on SYS_* availability.
  * ============================================================================
  */
@@ -257,27 +230,28 @@ wrapper_proto(syscall, long, (long, ...));
 #define REDIRECT_ENTRY_fchmodat2
 #endif
 
-/* Legacy syscalls redirected to *at versions (x86 only) */
+/* Legacy syscalls redirected to *at versions (x86 only)
+ * Format: (PATH, from, to, e1, nargs) where nargs = trailing args after path */
 #ifdef SYS_chmod
-#define REDIRECT_ENTRY_chmod ((PATH1, chmod, fchmodat, 0, _))
+#define REDIRECT_ENTRY_chmod ((PATH, chmod, fchmodat, 0, 1))
 #else
 #define REDIRECT_ENTRY_chmod
 #endif
 
 #ifdef SYS_chown
-#define REDIRECT_ENTRY_chown ((PATH2, chown, fchownat, 0, _))
+#define REDIRECT_ENTRY_chown ((PATH, chown, fchownat, 0, 2))
 #else
 #define REDIRECT_ENTRY_chown
 #endif
 
 #ifdef SYS_chown32
-#define REDIRECT_ENTRY_chown32 ((PATH2, chown32, fchownat, 0, _))
+#define REDIRECT_ENTRY_chown32 ((PATH, chown32, fchownat, 0, 2))
 #else
 #define REDIRECT_ENTRY_chown32
 #endif
 
 #ifdef SYS_rmdir
-#define REDIRECT_ENTRY_rmdir ((PATH0, rmdir, unlinkat, AT_REMOVEDIR, _))
+#define REDIRECT_ENTRY_rmdir ((PATH, rmdir, unlinkat, AT_REMOVEDIR, 0))
 #else
 #define REDIRECT_ENTRY_rmdir
 #endif
@@ -341,48 +315,48 @@ wrapper_proto(syscall, long, (long, ...));
  * Passthrough Table as Boost.PP Sequence
  *
  * These syscalls call the SAME syscall with path expansion (not redirect).
- * Pattern: (AT1/AT2/AT3, syscall, syscall, _, _) - note from=to for passthrough
+ * Format: (AT_PASS, syscall, syscall, _, nargs) where nargs = trailing args after path
  * ============================================================================
  */
 
 #ifdef SYS_unlinkat
-#define PASSTHROUGH_ENTRY_unlinkat ((AT1, unlinkat, unlinkat, _, _))
+#define PASSTHROUGH_ENTRY_unlinkat ((AT_PASS, unlinkat, unlinkat, _, 1))
 #else
 #define PASSTHROUGH_ENTRY_unlinkat
 #endif
 
 #ifdef SYS_mkdirat
-#define PASSTHROUGH_ENTRY_mkdirat ((AT1, mkdirat, mkdirat, _, _))
+#define PASSTHROUGH_ENTRY_mkdirat ((AT_PASS, mkdirat, mkdirat, _, 1))
 #else
 #define PASSTHROUGH_ENTRY_mkdirat
 #endif
 
 #ifdef SYS_faccessat
-#define PASSTHROUGH_ENTRY_faccessat ((AT2, faccessat, faccessat, _, _))
+#define PASSTHROUGH_ENTRY_faccessat ((AT_PASS, faccessat, faccessat, _, 2))
 #else
 #define PASSTHROUGH_ENTRY_faccessat
 #endif
 
 #ifdef SYS_openat
-#define PASSTHROUGH_ENTRY_openat ((AT2, openat, openat, _, _))
+#define PASSTHROUGH_ENTRY_openat ((AT_PASS, openat, openat, _, 2))
 #else
 #define PASSTHROUGH_ENTRY_openat
 #endif
 
 #ifdef SYS_newfstatat
-#define PASSTHROUGH_ENTRY_newfstatat ((AT2, newfstatat, newfstatat, _, _))
+#define PASSTHROUGH_ENTRY_newfstatat ((AT_PASS, newfstatat, newfstatat, _, 2))
 #else
 #define PASSTHROUGH_ENTRY_newfstatat
 #endif
 
 #ifdef SYS_readlinkat
-#define PASSTHROUGH_ENTRY_readlinkat ((AT2, readlinkat, readlinkat, _, _))
+#define PASSTHROUGH_ENTRY_readlinkat ((AT_PASS, readlinkat, readlinkat, _, 2))
 #else
 #define PASSTHROUGH_ENTRY_readlinkat
 #endif
 
 #ifdef SYS_statx
-#define PASSTHROUGH_ENTRY_statx ((AT3, statx, statx, _, _))
+#define PASSTHROUGH_ENTRY_statx ((AT_PASS, statx, statx, _, 3))
 #else
 #define PASSTHROUGH_ENTRY_statx
 #endif
