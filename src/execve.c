@@ -439,8 +439,7 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
     }
 
     /* Skip leading whitespace to get optional shebang argument */
-    *shebangArg += strspn(*shebangArg, " \t");
-    if (!**shebangArg) {
+    if (!*(*shebangArg += strspn(*shebangArg, " \t"))) {
         *shebangArg = NULL;
     } else {
         debug("exec: shebangArg=\"%s\"", *shebangArg);
