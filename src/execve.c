@@ -62,15 +62,14 @@ static int is_dynamic_linker(const char *filename)
  *   0  = Valid ELF but no PT_INTERP (static binary)
  *  -1  = Read error
  */
-static int exec_read_elf64_interp(char *interp_buf, int fd, const unsigned char *header)
+static int exec_read_elf64_interp(char *interp_buf, const int fd, const unsigned char *header)
 {
-    Elf64_Ehdr *ehdr = (Elf64_Ehdr *)header;
+    const Elf64_Ehdr *const ehdr = (const Elf64_Ehdr *)header;
     Elf64_Phdr phdr;
-    int i;
 
     /* Iterate program headers looking for PT_INTERP */
-    for (i = 0; i < ehdr->e_phnum; i++) {
-        off_t phdr_offset = ehdr->e_phoff + (i * ehdr->e_phentsize);
+    for (int i = 0; i < ehdr->e_phnum; i++) {
+        const off_t phdr_offset = ehdr->e_phoff + (i * ehdr->e_phentsize);
 
         if (lseek(fd, phdr_offset, SEEK_SET) == (off_t)-1) {
             return -1;
@@ -91,7 +90,7 @@ static int exec_read_elf64_interp(char *interp_buf, int fd, const unsigned char 
             }
 
             /* Read interpreter path into buffer */
-            ssize_t n = read(fd, interp_buf, phdr.p_filesz);
+            const ssize_t n = read(fd, interp_buf, phdr.p_filesz);
             if (n != (ssize_t)phdr.p_filesz) {
                 return -1;
             }
@@ -113,15 +112,14 @@ static int exec_read_elf64_interp(char *interp_buf, int fd, const unsigned char 
  *   0  = Valid ELF but no PT_INTERP (static binary)
  *  -1  = Read error
  */
-static int exec_read_elf32_interp(char *interp_buf, int fd, const unsigned char *header)
+static int exec_read_elf32_interp(char *interp_buf, const int fd, const unsigned char *header)
 {
-    Elf32_Ehdr *ehdr = (Elf32_Ehdr *)header;
+    const Elf32_Ehdr *const ehdr = (const Elf32_Ehdr *)header;
     Elf32_Phdr phdr;
-    int i;
 
     /* Iterate program headers looking for PT_INTERP */
-    for (i = 0; i < ehdr->e_phnum; i++) {
-        off_t phdr_offset = ehdr->e_phoff + (i * ehdr->e_phentsize);
+    for (int i = 0; i < ehdr->e_phnum; i++) {
+        const off_t phdr_offset = ehdr->e_phoff + (i * ehdr->e_phentsize);
 
         if (lseek(fd, phdr_offset, SEEK_SET) == (off_t)-1) {
             return -1;
@@ -142,7 +140,7 @@ static int exec_read_elf32_interp(char *interp_buf, int fd, const unsigned char 
             }
 
             /* Read interpreter path into buffer */
-            ssize_t n = read(fd, interp_buf, phdr.p_filesz);
+            const ssize_t n = read(fd, interp_buf, phdr.p_filesz);
             if (n != (ssize_t)phdr.p_filesz) {
                 return -1;
             }
@@ -164,7 +162,7 @@ static int exec_read_elf32_interp(char *interp_buf, int fd, const unsigned char 
  *   0  = Valid ELF but no PT_INTERP (static binary)
  *  -1  = Not ELF or read error
  */
-static int exec_read_elf_interp(char *interp_buf, int fd, const unsigned char *header)
+static int exec_read_elf_interp(char *interp_buf, const int fd, const unsigned char *header)
 {
     /* Check ELF magic: 0x7f 'E' 'L' 'F' */
     if (header[0] != 0x7f || header[1] != 'E' ||
@@ -250,9 +248,9 @@ LOCAL size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf
                 }
             }
             if (!skip) {
-                size_t keylen = strlen(key);
-                size_t envlen = strlen(env);
-                size_t len = keylen + envlen + 2;
+                const size_t keylen = strlen(key);
+                const size_t envlen = strlen(env);
+                const size_t len = keylen + envlen + 2;
                 total += len;
                 if (newenvp) {
                     newenvp[envpos] = bufptr;
@@ -329,7 +327,7 @@ LOCAL exec_ctx_t exec_prepare(const char *filename)
     }
 
     /* Try to read PT_INTERP from ELF to determine execution type */
-    int result = exec_read_elf_interp(ctx.hashbang, file, (unsigned char *)ctx.hashbang);
+    const int result = exec_read_elf_interp(ctx.hashbang, file, (unsigned char *)ctx.hashbang);
 
     if (result == 1) {
         /* PT_INTERP found - check if direct execution allowed */
@@ -395,11 +393,11 @@ static void exec_build_elf_argv(exec_ctx_t *ctx, char **newargv, char * const ar
 static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
 {
     /* Null-terminate at first newline - we only care about shebang line */
-    char *nl = strchr(ctx->hashbang, '\n');
+    char *const nl = strchr(ctx->hashbang, '\n');
     if (nl) *nl = '\0';
 
     /* Get interpreter (first whitespace-delimited token after "#!") */
-    char *originalInterp = strtok_r(ctx->hashbang + 2, " \t", shebangArg);
+    char *const originalInterp = strtok_r(ctx->hashbang + 2, " \t", shebangArg);
     if (!originalInterp) {
         *shebangArg = NULL;
         return NULL;
@@ -441,24 +439,23 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
 static void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const argv[])
 {
     unsigned int i, n;
-    char *displayArgv0;
     char *shebangArg;
     int direct_exec = 0;
 
     /* Parse shebang line and expand interpreter path into ctx->interpPath */
-    displayArgv0 = parse_shebang(ctx, &shebangArg);
+    char *const displayArgv0 = parse_shebang(ctx, &shebangArg);
 
     /*
      * Check if interpreter can be executed directly (has direct-exec PT_INTERP).
      * Direct-exec interpreters are those already patched to use Android glibc
      * or nix-ld shim, so they don't need the ld.so wrapper.
      */
-    int fd = nextcall(open)(ctx->interpPath, O_RDONLY);
+    const int fd = nextcall(open)(ctx->interpPath, O_RDONLY);
     if (fd >= 0) {
         unsigned char header[64];
         if (read(fd, header, sizeof(header)) >= (ssize_t)sizeof(header)) {
             char interp_buf[FAKECHROOT_PATH_MAX];
-            int result = exec_read_elf_interp(interp_buf, fd, header);
+            const int result = exec_read_elf_interp(interp_buf, fd, header);
             if (result == 1 && is_direct_exec_interp(interp_buf)) {
                 direct_exec = 1;
                 debug("exec: script interpreter has direct-exec PT_INTERP: %s", interp_buf);
