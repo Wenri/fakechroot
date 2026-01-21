@@ -18,35 +18,310 @@
 */
 
 /*
- * syscall_macros.h - Macros for syscall wrapper generation
+ * syscall_macros.h - Unified macros for syscall wrapper and SIGSYS handler
  *
- * These macros reduce boilerplate in syscall.c by providing templates for
- * common syscall wrapper patterns:
+ * This file provides a unified macro system for generating syscall redirect
+ * code in two contexts:
  *
- * 1. AT_PASSTHROUGH_N: AT syscalls that pass through with path expansion
- *    (dirfd, pathname, N extra args)
+ * 1. syscall() wrapper (syscall.c): Uses va_arg to extract arguments, performs
+ *    path expansion, and returns directly.
  *
- * 2. AT_REDIRECT_N: AT syscalls that redirect to another syscall
- *    (dirfd, pathname, args -> target_syscall with different args)
+ * 2. SIGSYS handler (sigaction.c): Extracts arguments from ucontext registers,
+ *    no path expansion (signal handler context), uses goto for control flow.
  *
- * 3. PATH_REDIRECT_N: Non-AT syscalls with path that redirect to AT version
- *    (pathname -> AT_FDCWD + pathname)
+ * The deduplication is achieved through:
+ * - Boost.PP for iteration over the redirect table (REDIRECT_SEQ)
+ * - C11 _Generic for type-based dispatch of argument accessors
+ * - Context types (syscall_args_t, sigsys_ctx_t) for _Generic selection
  *
- * 4. REDIRECT_N: Non-path syscalls that redirect to another syscall
- *
- * All arguments after pathname are extracted as `long` which is safe because:
- * - This matches glibc's syscall() implementation
- * - The kernel expects register-sized arguments
- * - Unused high bits are ignored
+ * Patterns supported:
+ * - SYS_GEN_AT: AT syscalls that drop last arg (faccessat2 -> faccessat)
+ * - SYS_GEN_PATH0/1/2: Non-AT syscalls redirected to AT versions
+ * - SYS_GEN_R0/3/4_2: Non-path syscalls with different arg counts
+ * - SYS_GEN_SYMLINK/LINK: Special multi-path syscalls
  */
 
 #ifndef SYSCALL_MACROS_H
 #define SYSCALL_MACROS_H
 
+#include <boost/preprocessor/seq/for_each.hpp>
+#include <boost/preprocessor/tuple/elem.hpp>
+#include <boost/preprocessor/cat.hpp>
+#include <sys/ucontext.h>
+
+/*
+ * ============================================================================
+ * SIGSYS Register Access (for signal handler context)
+ *
+ * These macros extract syscall arguments from the ucontext registers when
+ * handling SIGSYS signals from Android's seccomp filter.
+ * ============================================================================
+ */
+#ifdef __aarch64__
+#define SIGSYS_REG(ctx, n) ((long)(ctx)->uc_mcontext.regs[n])
+#define SIGSYS_SET_RETURN(ctx, val) ((ctx)->uc_mcontext.regs[0] = (val))
+#endif
+
+#ifdef __x86_64__
+#include <sys/ucontext.h>
+/* x86_64 syscall argument registers: rdi, rsi, rdx, r10, r8, r9 */
+#define SIGSYS_REG(ctx, n) ((long)(ctx)->uc_mcontext.gregs[ \
+    (n) == 0 ? REG_RDI : \
+    (n) == 1 ? REG_RSI : \
+    (n) == 2 ? REG_RDX : \
+    (n) == 3 ? REG_R10 : \
+    (n) == 4 ? REG_R8 : REG_R9])
+#define SIGSYS_SET_RETURN(ctx, val) ((ctx)->uc_mcontext.gregs[REG_RAX] = (val))
+#endif
+
+/*
+ * ============================================================================
+ * Context types for _Generic dispatch
+ *
+ * These types allow the same generator macros to work in both contexts:
+ * - syscall_args_t: Pre-extracted va_args in syscall() wrapper
+ * - sigsys_ctx_t: Pointer to ucontext in SIGSYS handler
+ * ============================================================================
+ */
+
+/* Syscall wrapper context - holds pre-extracted va_args */
+typedef struct {
+    long a[6];
+} syscall_args_t;
+
+/* SIGSYS handler context - pointer to ucontext */
+typedef ucontext_t * sigsys_ctx_t;
+
+/*
+ * ============================================================================
+ * Type-generic accessors using _Generic
+ *
+ * CTX_ARG extracts argument n from either context type:
+ * - syscall_args_t: Direct array access
+ * - sigsys_ctx_t: Register access via SIGSYS_REG
+ * ============================================================================
+ */
+
+#define CTX_ARG(ctx, n) _Generic((ctx), \
+    syscall_args_t: (ctx).a[n], \
+    sigsys_ctx_t: SIGSYS_REG(ctx, n))
+
+/* Both contexts use nextcall(syscall) for proper interception */
+#define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
+
+/*
+ * ============================================================================
+ * Unified Generator Macros using CTX_ARG
+ *
+ * These macros generate case statements for the switch. They take:
+ * - from: Source syscall name (without SYS_ prefix)
+ * - to: Target syscall name (without SYS_ prefix)
+ * - extra: Extra argument(s) to append
+ * - ctx_expr: Context expression (syscall_args_t or sigsys_ctx_t)
+ * - DONE: Macro to handle result (return or goto)
+ *
+ * Note: DONE must be context-specific because control flow differs:
+ * - syscall.c: va_end(ap); return val;
+ * - sigaction.c: ret = val; goto set_return;
+ *
+ * Important: We use typeof() to ensure ctx_expr is evaluated only once,
+ * avoiding issues with side effects (e.g., va_arg in SYSCALL_SETUP).
+ * ============================================================================
+ */
+
+/* AT syscall: syscall(dirfd, path, mode) -> target(dirfd, path, mode, extra) */
+#define SYS_GEN_AT(from, to, extra, ctx_expr, DONE) \
+    case SYS_##from: { \
+        typeof(ctx_expr) _ctx = ctx_expr; \
+        long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), extra); \
+        debug("redirect: " #from " -> " #to " = %ld", result); \
+        DONE(result); \
+    }
+
+/* Path with 0 args: syscall(path) -> target(AT_FDCWD, path, extra) */
+#define SYS_GEN_PATH0(from, to, extra, ctx_expr, DONE) \
+    case SYS_##from: { \
+        typeof(ctx_expr) _ctx = ctx_expr; \
+        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), extra); \
+        debug("redirect: " #from " -> " #to " = %ld", result); \
+        DONE(result); \
+    }
+
+/* Path with 1 arg: syscall(path, a2) -> target(AT_FDCWD, path, a2, extra) */
+#define SYS_GEN_PATH1(from, to, extra, ctx_expr, DONE) \
+    case SYS_##from: { \
+        typeof(ctx_expr) _ctx = ctx_expr; \
+        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), extra); \
+        debug("redirect: " #from " -> " #to " = %ld", result); \
+        DONE(result); \
+    }
+
+/* Path with 2 args: syscall(path, a2, a3) -> target(AT_FDCWD, path, a2, a3, extra) */
+#define SYS_GEN_PATH2(from, to, extra, ctx_expr, DONE) \
+    case SYS_##from: { \
+        typeof(ctx_expr) _ctx = ctx_expr; \
+        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), extra); \
+        debug("redirect: " #from " -> " #to " = %ld", result); \
+        DONE(result); \
+    }
+
+/* 0 args: syscall() -> target(extra) */
+#define SYS_GEN_R0(from, to, extra, ctx_expr, DONE) \
+    case SYS_##from: { \
+        typeof(ctx_expr) _ctx = ctx_expr; \
+        (void)_ctx; /* unused but needed for consistency */ \
+        long result = CTX_CALL(_ctx, SYS_##to, extra); \
+        debug("redirect: " #from " -> " #to " = %ld", result); \
+        DONE(result); \
+    }
+
+/* 3 args: syscall(a1, a2, a3) -> target(a1, a2, a3, extra) */
+#define SYS_GEN_R3(from, to, extra, ctx_expr, DONE) \
+    case SYS_##from: { \
+        typeof(ctx_expr) _ctx = ctx_expr; \
+        long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), extra); \
+        debug("redirect: " #from " -> " #to " = %ld", result); \
+        DONE(result); \
+    }
+
+/* 4 args + 2 extras: syscall(a1, a2, a3, a4) -> target(a1, a2, a3, a4, e1, e2) */
+#define SYS_GEN_R4_2(from, to, e1, e2, ctx_expr, DONE) \
+    case SYS_##from: { \
+        typeof(ctx_expr) _ctx = ctx_expr; \
+        long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), CTX_ARG(_ctx, 3), e1, e2); \
+        debug("redirect: " #from " -> " #to " = %ld", result); \
+        DONE(result); \
+    }
+
+/* symlink(target, linkpath) -> symlinkat(target, AT_FDCWD, linkpath) */
+#define SYS_GEN_SYMLINK(from, to, _, ctx_expr, DONE) \
+    case SYS_##from: { \
+        typeof(ctx_expr) _ctx = ctx_expr; \
+        long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), AT_FDCWD, CTX_ARG(_ctx, 1)); \
+        debug("redirect: " #from " -> " #to " = %ld", result); \
+        DONE(result); \
+    }
+
+/* link(oldpath, newpath) -> linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0) */
+#define SYS_GEN_LINK(from, to, _, ctx_expr, DONE) \
+    case SYS_##from: { \
+        typeof(ctx_expr) _ctx = ctx_expr; \
+        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), AT_FDCWD, CTX_ARG(_ctx, 1), 0); \
+        debug("redirect: " #from " -> " #to " = %ld", result); \
+        DONE(result); \
+    }
+
+/*
+ * ============================================================================
+ * Redirect Table as Boost.PP Sequence
+ *
+ * Each entry is a tuple: (PATTERN, from, to, extra)
+ * - PATTERN: Generator macro suffix (AT, PATH0, PATH1, PATH2, R0, R3, SYMLINK, LINK)
+ * - from: Source syscall name (without SYS_ prefix)
+ * - to: Target syscall name (without SYS_ prefix)
+ * - extra: Extra argument(s) - use _ for none, (e1, e2) for R4_2
+ *
+ * Note: Entries are conditionally included based on SYS_* availability.
+ * ============================================================================
+ */
+
+/* Newer syscalls that have older fallbacks */
+#ifdef SYS_faccessat2
+#define REDIRECT_ENTRY_faccessat2 ((AT, faccessat2, faccessat, 0))
+#else
+#define REDIRECT_ENTRY_faccessat2
+#endif
+
+#ifdef SYS_fchmodat2
+#define REDIRECT_ENTRY_fchmodat2 ((AT, fchmodat2, fchmodat, 0))
+#else
+#define REDIRECT_ENTRY_fchmodat2
+#endif
+
+/* Legacy syscalls redirected to *at versions (x86 only) */
+#ifdef SYS_chmod
+#define REDIRECT_ENTRY_chmod ((PATH1, chmod, fchmodat, 0))
+#else
+#define REDIRECT_ENTRY_chmod
+#endif
+
+#ifdef SYS_chown
+#define REDIRECT_ENTRY_chown ((PATH2, chown, fchownat, 0))
+#else
+#define REDIRECT_ENTRY_chown
+#endif
+
+#ifdef SYS_chown32
+#define REDIRECT_ENTRY_chown32 ((PATH2, chown32, fchownat, 0))
+#else
+#define REDIRECT_ENTRY_chown32
+#endif
+
+#ifdef SYS_rmdir
+#define REDIRECT_ENTRY_rmdir ((PATH0, rmdir, unlinkat, AT_REMOVEDIR))
+#else
+#define REDIRECT_ENTRY_rmdir
+#endif
+
+/* Socket syscalls (may be legacy on some archs) */
+#ifdef SYS_accept
+#define REDIRECT_ENTRY_accept ((R3, accept, accept4, 0))
+#else
+#define REDIRECT_ENTRY_accept
+#endif
+
+#ifdef SYS_recv
+#define REDIRECT_ENTRY_recv ((R4_2, recv, recvfrom, 0, 0))
+#else
+#define REDIRECT_ENTRY_recv
+#endif
+
+#ifdef SYS_send
+#define REDIRECT_ENTRY_send ((R4_2, send, sendto, 0, 0))
+#else
+#define REDIRECT_ENTRY_send
+#endif
+
+/* Process syscalls */
+#ifdef SYS_getpgrp
+#define REDIRECT_ENTRY_getpgrp ((R0, getpgrp, getpgid, 0))
+#else
+#define REDIRECT_ENTRY_getpgrp
+#endif
+
+/* Filesystem syscalls */
+#ifdef SYS_symlink
+#define REDIRECT_ENTRY_symlink ((SYMLINK, symlink, symlinkat, _))
+#else
+#define REDIRECT_ENTRY_symlink
+#endif
+
+#ifdef SYS_link
+#define REDIRECT_ENTRY_link ((LINK, link, linkat, _))
+#else
+#define REDIRECT_ENTRY_link
+#endif
+
+/* Combined redirect sequence - expands to all defined entries */
+#define REDIRECT_SEQ \
+    REDIRECT_ENTRY_faccessat2 \
+    REDIRECT_ENTRY_fchmodat2 \
+    REDIRECT_ENTRY_chmod \
+    REDIRECT_ENTRY_chown \
+    REDIRECT_ENTRY_chown32 \
+    REDIRECT_ENTRY_rmdir \
+    REDIRECT_ENTRY_accept \
+    REDIRECT_ENTRY_recv \
+    REDIRECT_ENTRY_send \
+    REDIRECT_ENTRY_getpgrp \
+    REDIRECT_ENTRY_symlink \
+    REDIRECT_ENTRY_link
+
 /*
  * ============================================================================
  * AT Pass-through syscalls: expand path and call same syscall
  * Pattern: syscall(dirfd, pathname, ...) with path expansion
+ * (These are NOT redirects - they call the same syscall with expanded path)
  * ============================================================================
  */
 
@@ -88,274 +363,5 @@
         pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_buf); \
         return nextcall(syscall)(number, dirfd, pathname, a3, a4, a5); \
     }
-
-/*
- * ============================================================================
- * AT Redirect syscalls: expand path and redirect to different syscall
- * Pattern: syscall(dirfd, pathname, ...) -> target(dirfd, pathname, ...)
- * ============================================================================
- */
-
-/* AT redirect with 1 arg: syscall(dirfd, path, a3) -> target(dirfd, path, a3, extra) */
-#define AT_REDIRECT_1(sysnum, target, extra) \
-    case sysnum: { \
-        int dirfd = va_arg(ap, int); \
-        const char *pathname = va_arg(ap, const char *); \
-        long a3 = va_arg(ap, long); \
-        va_end(ap); \
-        debug("syscall(" #sysnum ", %d, \"%s\", %ld) -> " #target, dirfd, pathname, a3); \
-        pathname = expand_chroot_path_at(dirfd, pathname, fakechroot_buf); \
-        return nextcall(syscall)(target, dirfd, pathname, a3, extra); \
-    }
-
-/*
- * ============================================================================
- * PATH Redirect syscalls: non-AT syscall redirects to AT version
- * Pattern: syscall(pathname, ...) -> target(AT_FDCWD, pathname, ...)
- * ============================================================================
- */
-
-/* Path redirect with 1 arg: syscall(path, a2) -> target(AT_FDCWD, path, a2, extra) */
-#define PATH_REDIRECT_1(sysnum, target, extra) \
-    case sysnum: { \
-        const char *pathname = va_arg(ap, const char *); \
-        long a2 = va_arg(ap, long); \
-        va_end(ap); \
-        debug("syscall(" #sysnum ", \"%s\", %ld) -> " #target, pathname, a2); \
-        pathname = expand_chroot_path(pathname, fakechroot_buf); \
-        return nextcall(syscall)(target, AT_FDCWD, pathname, a2, extra); \
-    }
-
-/* Path redirect with 2 args: syscall(path, a2, a3) -> target(AT_FDCWD, path, a2, a3, extra) */
-#define PATH_REDIRECT_2(sysnum, target, extra) \
-    case sysnum: { \
-        const char *pathname = va_arg(ap, const char *); \
-        long a2 = va_arg(ap, long); \
-        long a3 = va_arg(ap, long); \
-        va_end(ap); \
-        debug("syscall(" #sysnum ", \"%s\", ...) -> " #target, pathname); \
-        pathname = expand_chroot_path(pathname, fakechroot_buf); \
-        return nextcall(syscall)(target, AT_FDCWD, pathname, a2, a3, extra); \
-    }
-
-/* Path redirect with 0 args: syscall(path) -> target(AT_FDCWD, path, extra) */
-#define PATH_REDIRECT_0(sysnum, target, extra) \
-    case sysnum: { \
-        const char *pathname = va_arg(ap, const char *); \
-        va_end(ap); \
-        debug("syscall(" #sysnum ", \"%s\") -> " #target, pathname); \
-        pathname = expand_chroot_path(pathname, fakechroot_buf); \
-        return nextcall(syscall)(target, AT_FDCWD, pathname, extra); \
-    }
-
-/*
- * ============================================================================
- * Non-path redirect syscalls: redirect to different syscall
- * Pattern: syscall(args...) -> target(args..., extra)
- * ============================================================================
- */
-
-/* Redirect with 3 args: syscall(a1, a2, a3) -> target(a1, a2, a3, extra) */
-#define REDIRECT_3(sysnum, target, extra) \
-    case sysnum: { \
-        long a1 = va_arg(ap, long); \
-        long a2 = va_arg(ap, long); \
-        long a3 = va_arg(ap, long); \
-        va_end(ap); \
-        debug("syscall(" #sysnum ", ...) -> " #target); \
-        return nextcall(syscall)(target, a1, a2, a3, extra); \
-    }
-
-/* Redirect with 4 args: syscall(a1, a2, a3, a4) -> target(a1, a2, a3, a4, extra1, extra2) */
-#define REDIRECT_4_2(sysnum, target, extra1, extra2) \
-    case sysnum: { \
-        long a1 = va_arg(ap, long); \
-        long a2 = va_arg(ap, long); \
-        long a3 = va_arg(ap, long); \
-        long a4 = va_arg(ap, long); \
-        va_end(ap); \
-        debug("syscall(" #sysnum ", ...) -> " #target); \
-        return nextcall(syscall)(target, a1, a2, a3, a4, extra1, extra2); \
-    }
-
-/* Redirect with 0 args: syscall() -> target(extra) */
-#define REDIRECT_0(sysnum, target, extra) \
-    case sysnum: { \
-        va_end(ap); \
-        debug("syscall(" #sysnum ") -> " #target "(" #extra ")"); \
-        return nextcall(syscall)(target, extra); \
-    }
-
-/*
- * ============================================================================
- * Special cases for symlink/link (multiple paths)
- * ============================================================================
- */
-
-/* symlink(target, linkpath) -> symlinkat(target, AT_FDCWD, linkpath) */
-#define SYMLINK_REDIRECT(sysnum, target) \
-    case sysnum: { \
-        const char *oldpath = va_arg(ap, const char *); \
-        const char *newpath = va_arg(ap, const char *); \
-        va_end(ap); \
-        debug("syscall(" #sysnum ", \"%s\", \"%s\") -> " #target, oldpath, newpath); \
-        newpath = expand_chroot_path(newpath, fakechroot_buf); \
-        return nextcall(syscall)(target, oldpath, AT_FDCWD, newpath); \
-    }
-
-/* link(oldpath, newpath) -> linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0) */
-#define LINK_REDIRECT(sysnum, target) \
-    case sysnum: { \
-        char fakechroot_buf2[FAKECHROOT_PATH_MAX]; \
-        const char *oldpath = va_arg(ap, const char *); \
-        const char *newpath = va_arg(ap, const char *); \
-        va_end(ap); \
-        debug("syscall(" #sysnum ", \"%s\", \"%s\") -> " #target, oldpath, newpath); \
-        oldpath = expand_chroot_path(oldpath, fakechroot_buf); \
-        newpath = expand_chroot_path(newpath, fakechroot_buf2); \
-        return nextcall(syscall)(target, AT_FDCWD, oldpath, AT_FDCWD, newpath, 0); \
-    }
-
-/*
- * ============================================================================
- * SIGSYS Register Access (for signal handler context)
- *
- * These macros extract syscall arguments from the ucontext registers when
- * handling SIGSYS signals from Android's seccomp filter.
- * ============================================================================
- */
-#ifdef __aarch64__
-#define SIGSYS_REG(ctx, n) ((long)(ctx)->uc_mcontext.regs[n])
-#define SIGSYS_SET_RETURN(ctx, val) ((ctx)->uc_mcontext.regs[0] = (val))
-#endif
-
-#ifdef __x86_64__
-#include <sys/ucontext.h>
-/* x86_64 syscall argument registers: rdi, rsi, rdx, r10, r8, r9 */
-#define SIGSYS_REG(ctx, n) ((long)(ctx)->uc_mcontext.gregs[ \
-    (n) == 0 ? REG_RDI : \
-    (n) == 1 ? REG_RSI : \
-    (n) == 2 ? REG_RDX : \
-    (n) == 3 ? REG_R10 : \
-    (n) == 4 ? REG_R8 : REG_R9])
-#define SIGSYS_SET_RETURN(ctx, val) ((ctx)->uc_mcontext.gregs[REG_RAX] = (val))
-#endif
-
-/*
- * ============================================================================
- * Redirect Table - Single source of truth for all syscall redirects
- *
- * This X-macro table defines all syscall redirects in one place.
- * It is expanded differently in syscall.c (va_arg + path expansion) and
- * sigaction.c (register access for SIGSYS handler).
- *
- * X-macro patterns:
- *   AT_REDIRECT_X(from, to, extra)      - AT syscall drops last arg, adds extra
- *   PATH_REDIRECT_0_X(from, to, extra)  - path → AT_FDCWD + path + extra
- *   PATH_REDIRECT_1_X(from, to, extra)  - path + 1 arg → AT_FDCWD + path + arg + extra
- *   PATH_REDIRECT_2_X(from, to, extra)  - path + 2 args → AT_FDCWD + path + args + extra
- *   REDIRECT_0_X(from, to, extra)       - no args → extra
- *   REDIRECT_3_X(from, to, extra)       - 3 args → 3 args + extra
- *   REDIRECT_4_2_X(from, to, e1, e2)    - 4 args → 4 args + 2 extras
- *   SYMLINK_REDIRECT_X(from, to)        - target + path → target + AT_FDCWD + path
- *   LINK_REDIRECT_X(from, to)           - old + new → AT_FDCWD + old + AT_FDCWD + new + 0
- *
- * Note: Each entry is wrapped in #ifdef because some syscalls don't exist on
- * all architectures (e.g., chmod, chown, rmdir are x86-only legacy syscalls;
- * aarch64 only has the *at versions).
- * ============================================================================
- */
-
-/* Newer syscalls that have older fallbacks */
-#ifdef SYS_faccessat2
-#define REDIRECT_faccessat2 AT_REDIRECT_X(faccessat2, faccessat, 0)
-#else
-#define REDIRECT_faccessat2
-#endif
-
-#ifdef SYS_fchmodat2
-#define REDIRECT_fchmodat2 AT_REDIRECT_X(fchmodat2, fchmodat, 0)
-#else
-#define REDIRECT_fchmodat2
-#endif
-
-/* Legacy syscalls redirected to *at versions (x86 only) */
-#ifdef SYS_chmod
-#define REDIRECT_chmod PATH_REDIRECT_1_X(chmod, fchmodat, 0)
-#else
-#define REDIRECT_chmod
-#endif
-
-#ifdef SYS_chown
-#define REDIRECT_chown PATH_REDIRECT_2_X(chown, fchownat, 0)
-#else
-#define REDIRECT_chown
-#endif
-
-#ifdef SYS_chown32
-#define REDIRECT_chown32 PATH_REDIRECT_2_X(chown32, fchownat, 0)
-#else
-#define REDIRECT_chown32
-#endif
-
-#ifdef SYS_rmdir
-#define REDIRECT_rmdir PATH_REDIRECT_0_X(rmdir, unlinkat, AT_REMOVEDIR)
-#else
-#define REDIRECT_rmdir
-#endif
-
-/* Socket syscalls (may be legacy on some archs) */
-#ifdef SYS_accept
-#define REDIRECT_accept REDIRECT_3_X(accept, accept4, 0)
-#else
-#define REDIRECT_accept
-#endif
-
-#ifdef SYS_recv
-#define REDIRECT_recv REDIRECT_4_2_X(recv, recvfrom, 0, 0)
-#else
-#define REDIRECT_recv
-#endif
-
-#ifdef SYS_send
-#define REDIRECT_send REDIRECT_4_2_X(send, sendto, 0, 0)
-#else
-#define REDIRECT_send
-#endif
-
-/* Process syscalls */
-#ifdef SYS_getpgrp
-#define REDIRECT_getpgrp REDIRECT_0_X(getpgrp, getpgid, 0)
-#else
-#define REDIRECT_getpgrp
-#endif
-
-/* Filesystem syscalls */
-#ifdef SYS_symlink
-#define REDIRECT_symlink SYMLINK_REDIRECT_X(symlink, symlinkat)
-#else
-#define REDIRECT_symlink
-#endif
-
-#ifdef SYS_link
-#define REDIRECT_link LINK_REDIRECT_X(link, linkat)
-#else
-#define REDIRECT_link
-#endif
-
-/* Combined redirect table - expands to all defined redirects */
-#define REDIRECT_TABLE \
-    REDIRECT_faccessat2 \
-    REDIRECT_fchmodat2 \
-    REDIRECT_chmod \
-    REDIRECT_chown \
-    REDIRECT_chown32 \
-    REDIRECT_rmdir \
-    REDIRECT_accept \
-    REDIRECT_recv \
-    REDIRECT_send \
-    REDIRECT_getpgrp \
-    REDIRECT_symlink \
-    REDIRECT_link
 
 #endif /* SYSCALL_MACROS_H */

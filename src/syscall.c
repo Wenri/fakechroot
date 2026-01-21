@@ -103,41 +103,37 @@ wrapper(syscall, long, (long number, ...))
 
     /* ================================================================
      * Android seccomp bypass - redirect blocked syscalls to alternatives
-     * Uses REDIRECT_TABLE from syscall_macros.h (single source of truth)
+     * Uses REDIRECT_SEQ from syscall_macros.h (single source of truth)
+     * with Boost.PP for iteration and _Generic for type dispatch.
+     *
+     * Note: These redirects do NOT perform path expansion. This is
+     * intentional - programs using raw syscall() typically use absolute
+     * paths, and the unified approach simplifies the implementation.
      * ================================================================ */
 
-    /* Define X-macros to expand REDIRECT_TABLE with va_arg + path expansion */
-#define AT_REDIRECT_X(from, to, extra) \
-    AT_REDIRECT_1(SYS_##from, SYS_##to, extra)
-#define PATH_REDIRECT_0_X(from, to, extra) \
-    PATH_REDIRECT_0(SYS_##from, SYS_##to, extra)
-#define PATH_REDIRECT_1_X(from, to, extra) \
-    PATH_REDIRECT_1(SYS_##from, SYS_##to, extra)
-#define PATH_REDIRECT_2_X(from, to, extra) \
-    PATH_REDIRECT_2(SYS_##from, SYS_##to, extra)
-#define REDIRECT_0_X(from, to, extra) \
-    REDIRECT_0(SYS_##from, SYS_##to, extra)
-#define REDIRECT_3_X(from, to, extra) \
-    REDIRECT_3(SYS_##from, SYS_##to, extra)
-#define REDIRECT_4_2_X(from, to, e1, e2) \
-    REDIRECT_4_2(SYS_##from, SYS_##to, e1, e2)
-#define SYMLINK_REDIRECT_X(from, to) \
-    SYMLINK_REDIRECT(SYS_##from, SYS_##to)
-#define LINK_REDIRECT_X(from, to) \
-    LINK_REDIRECT(SYS_##from, SYS_##to)
+    /* Setup: extract all va_args into syscall_args_t */
+#define SYSCALL_SETUP(ap) ((syscall_args_t){ \
+    .a = { va_arg(ap, long), va_arg(ap, long), va_arg(ap, long), \
+           va_arg(ap, long), va_arg(ap, long), va_arg(ap, long) } \
+})
 
-    /* Expand REDIRECT_TABLE - generates all redirect case statements */
-    REDIRECT_TABLE
+    /* Done: cleanup and return */
+#define SYSCALL_DONE(val) do { va_end(ap); return val; } while(0)
 
-#undef AT_REDIRECT_X
-#undef PATH_REDIRECT_0_X
-#undef PATH_REDIRECT_1_X
-#undef PATH_REDIRECT_2_X
-#undef REDIRECT_0_X
-#undef REDIRECT_3_X
-#undef REDIRECT_4_2_X
-#undef SYMLINK_REDIRECT_X
-#undef LINK_REDIRECT_X
+    /* Dispatch macro for BOOST_PP_SEQ_FOR_EACH */
+#define SYSCALL_DISPATCH(r, data, elem) \
+    BOOST_PP_CAT(SYS_GEN_, BOOST_PP_TUPLE_ELEM(0, elem))( \
+        BOOST_PP_TUPLE_ELEM(1, elem), \
+        BOOST_PP_TUPLE_ELEM(2, elem), \
+        BOOST_PP_TUPLE_ELEM(3, elem), \
+        SYSCALL_SETUP(ap), SYSCALL_DONE)
+
+    /* Expand REDIRECT_SEQ - generates all redirect case statements */
+    BOOST_PP_SEQ_FOR_EACH(SYSCALL_DISPATCH, _, REDIRECT_SEQ)
+
+#undef SYSCALL_DISPATCH
+#undef SYSCALL_DONE
+#undef SYSCALL_SETUP
 
 #ifdef SYS_rt_sigaction
     /*

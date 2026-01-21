@@ -124,76 +124,32 @@ struct sigaction saved_sigsys_handler;
 static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 {
     long ret;
+    sigsys_ctx_t sctx = ctx;  /* For _Generic type matching */
 
     switch (syscall_nr) {
 
-/* Define X-macros to expand REDIRECT_TABLE with register access */
-#define AT_REDIRECT_X(from, to, extra) \
-    case SYS_##from: \
-        ret = syscall(SYS_##to, SIGSYS_REG(ctx, 0), SIGSYS_REG(ctx, 1), SIGSYS_REG(ctx, 2)); \
-        debug("sigsys: " #from " -> " #to " = %ld", ret); \
-        goto set_return;
+    /* ================================================================
+     * Android seccomp bypass - redirect blocked syscalls to alternatives
+     * Uses REDIRECT_SEQ from syscall_macros.h (single source of truth)
+     * with Boost.PP for iteration and _Generic for type dispatch.
+     * ================================================================ */
 
-#define PATH_REDIRECT_0_X(from, to, extra) \
-    case SYS_##from: \
-        ret = syscall(SYS_##to, AT_FDCWD, SIGSYS_REG(ctx, 0), extra); \
-        debug("sigsys: " #from " -> " #to " = %ld", ret); \
-        goto set_return;
+    /* Done: set return value and goto cleanup */
+#define SIGSYS_DONE(val) do { ret = val; goto set_return; } while(0)
 
-#define PATH_REDIRECT_1_X(from, to, extra) \
-    case SYS_##from: \
-        ret = syscall(SYS_##to, AT_FDCWD, SIGSYS_REG(ctx, 0), SIGSYS_REG(ctx, 1), extra); \
-        debug("sigsys: " #from " -> " #to " = %ld", ret); \
-        goto set_return;
+    /* Dispatch macro for BOOST_PP_SEQ_FOR_EACH */
+#define SIGSYS_DISPATCH(r, data, elem) \
+    BOOST_PP_CAT(SYS_GEN_, BOOST_PP_TUPLE_ELEM(0, elem))( \
+        BOOST_PP_TUPLE_ELEM(1, elem), \
+        BOOST_PP_TUPLE_ELEM(2, elem), \
+        BOOST_PP_TUPLE_ELEM(3, elem), \
+        sctx, SIGSYS_DONE)
 
-#define PATH_REDIRECT_2_X(from, to, extra) \
-    case SYS_##from: \
-        ret = syscall(SYS_##to, AT_FDCWD, SIGSYS_REG(ctx, 0), SIGSYS_REG(ctx, 1), SIGSYS_REG(ctx, 2), extra); \
-        debug("sigsys: " #from " -> " #to " = %ld", ret); \
-        goto set_return;
+    /* Expand REDIRECT_SEQ - generates all redirect case statements */
+    BOOST_PP_SEQ_FOR_EACH(SIGSYS_DISPATCH, _, REDIRECT_SEQ)
 
-#define REDIRECT_0_X(from, to, extra) \
-    case SYS_##from: \
-        ret = syscall(SYS_##to, extra); \
-        debug("sigsys: " #from " -> " #to " = %ld", ret); \
-        goto set_return;
-
-#define REDIRECT_3_X(from, to, extra) \
-    case SYS_##from: \
-        ret = syscall(SYS_##to, SIGSYS_REG(ctx, 0), SIGSYS_REG(ctx, 1), SIGSYS_REG(ctx, 2), extra); \
-        debug("sigsys: " #from " -> " #to " = %ld", ret); \
-        goto set_return;
-
-#define REDIRECT_4_2_X(from, to, e1, e2) \
-    case SYS_##from: \
-        ret = syscall(SYS_##to, SIGSYS_REG(ctx, 0), SIGSYS_REG(ctx, 1), SIGSYS_REG(ctx, 2), SIGSYS_REG(ctx, 3), e1, e2); \
-        debug("sigsys: " #from " -> " #to " = %ld", ret); \
-        goto set_return;
-
-#define SYMLINK_REDIRECT_X(from, to) \
-    case SYS_##from: \
-        ret = syscall(SYS_##to, SIGSYS_REG(ctx, 0), AT_FDCWD, SIGSYS_REG(ctx, 1)); \
-        debug("sigsys: " #from " -> " #to " = %ld", ret); \
-        goto set_return;
-
-#define LINK_REDIRECT_X(from, to) \
-    case SYS_##from: \
-        ret = syscall(SYS_##to, AT_FDCWD, SIGSYS_REG(ctx, 0), AT_FDCWD, SIGSYS_REG(ctx, 1), 0); \
-        debug("sigsys: " #from " -> " #to " = %ld", ret); \
-        goto set_return;
-
-    /* Expand REDIRECT_TABLE - generates all redirect case statements */
-    REDIRECT_TABLE
-
-#undef AT_REDIRECT_X
-#undef PATH_REDIRECT_0_X
-#undef PATH_REDIRECT_1_X
-#undef PATH_REDIRECT_2_X
-#undef REDIRECT_0_X
-#undef REDIRECT_3_X
-#undef REDIRECT_4_2_X
-#undef SYMLINK_REDIRECT_X
-#undef LINK_REDIRECT_X
+#undef SIGSYS_DISPATCH
+#undef SIGSYS_DONE
 
     default:
         return 0;  /* Not handled */
