@@ -114,9 +114,6 @@ wrapper(syscall, long, (long number, ...))
     /* Context-specific argument accessor for syscall_args_t */
 #define CTX_ARG(ctx, n) (ctx).a[n]
 
-    /* Context-specific syscall caller - use nextcall to bypass our own wrapper */
-#define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
-
     /* Path expansion for syscall wrapper context */
 #define CTX_EXPAND_PATH(ctx, arg_n) \
     expand_chroot_path((const char *)CTX_ARG(ctx, arg_n), fakechroot_buf)
@@ -156,7 +153,6 @@ wrapper(syscall, long, (long number, ...))
 #undef CTX_EXPAND_PATH_2
 #undef CTX_EXPAND_PATH_AT
 #undef CTX_EXPAND_PATH
-#undef CTX_CALL
 #undef CTX_ARG
 
 #ifdef SYS_rt_sigaction

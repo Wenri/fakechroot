@@ -140,9 +140,6 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
     /* Context-specific argument accessor for sigsys_ctx_t (ucontext pointer) */
 #define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
 
-    /* Context-specific syscall caller - use nextcall for proper interception */
-#define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
-
     /* No path expansion in signal handler context - return raw argument */
 #define CTX_EXPAND_PATH(ctx, arg_n) ((const char *)CTX_ARG(ctx, arg_n))
 #define CTX_EXPAND_PATH_AT(ctx, dirfd_n, path_n) ((const char *)CTX_ARG(ctx, path_n))
@@ -168,7 +165,6 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 #undef CTX_EXPAND_PATH_2
 #undef CTX_EXPAND_PATH_AT
 #undef CTX_EXPAND_PATH
-#undef CTX_CALL
 #undef CTX_ARG
 
     default:

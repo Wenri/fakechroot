@@ -30,7 +30,7 @@
  *
  * The deduplication is achieved through:
  * - Boost.PP for iteration over the redirect table (REDIRECT_SEQ)
- * - Context-specific CTX_ARG and CTX_CALL macros defined per-file
+ * - Context-specific CTX_ARG and CTX_EXPAND_PATH* macros defined per-file
  * - Context types (syscall_args_t, sigsys_ctx_t) for type safety
  *
  * Patterns supported:
@@ -110,9 +110,6 @@ typedef ucontext_t * sigsys_ctx_t;
  * - syscall.c: #define CTX_ARG(ctx, n) (ctx).a[n]
  * - sigaction.c: #define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
  *
- * CTX_CALL - Syscall invocation:
- * - syscall.c: #define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
- * - sigaction.c: #define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
  *
  * CTX_EXPAND_PATH - Path expansion for chroot (arg index):
  * - syscall.c: expand_chroot_path((const char *)CTX_ARG(ctx, n), fakechroot_buf)
@@ -162,7 +159,7 @@ typedef ucontext_t * sigsys_ctx_t;
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
         const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2), e1); \
+        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -172,7 +169,7 @@ typedef ucontext_t * sigsys_ctx_t;
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
         const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, e1); \
+        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -182,7 +179,7 @@ typedef ucontext_t * sigsys_ctx_t;
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
         const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, CTX_ARG(_ctx, 1), e1); \
+        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, CTX_ARG(_ctx, 1), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -192,7 +189,7 @@ typedef ucontext_t * sigsys_ctx_t;
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
         const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
+        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -202,7 +199,7 @@ typedef ucontext_t * sigsys_ctx_t;
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
         (void)_ctx; /* unused but needed for consistency */ \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), e1); \
+        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -211,7 +208,7 @@ typedef ucontext_t * sigsys_ctx_t;
 #define SYS_GEN_R3(from, to, e1, e2, ctx_expr, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
+        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -220,7 +217,7 @@ typedef ucontext_t * sigsys_ctx_t;
 #define SYS_GEN_R4_2(from, to, e1, e2, ctx_expr, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), CTX_ARG(_ctx, 3), e1, e2); \
+        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), CTX_ARG(_ctx, 3), e1, e2); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -231,7 +228,7 @@ typedef ucontext_t * sigsys_ctx_t;
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
         const char *_newpath = CTX_EXPAND_PATH(_ctx, 1); \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), AT_FDCWD, _newpath); \
+        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), AT_FDCWD, _newpath); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -243,7 +240,7 @@ typedef ucontext_t * sigsys_ctx_t;
         typeof(ctx_expr) _ctx = ctx_expr; \
         const char *_oldpath = CTX_EXPAND_PATH(_ctx, 0); \
         const char *_newpath = CTX_EXPAND_PATH_2(_ctx, 1); \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, _oldpath, AT_FDCWD, _newpath, 0); \
+        long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), AT_FDCWD, _oldpath, AT_FDCWD, _newpath, 0); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
