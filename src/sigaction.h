@@ -33,24 +33,34 @@
  * ============================================================================
  * SIGSYS Register Access
  *
- * These macros extract syscall arguments from the ucontext registers when
+ * These functions extract syscall arguments from the ucontext registers when
  * handling SIGSYS signals from Android's seccomp filter.
  * ============================================================================
  */
 #ifdef __aarch64__
-#define SIGSYS_REG(ctx, n) ((long)(ctx)->uc_mcontext.regs[n])
-#define SIGSYS_SET_RETURN(ctx, val) ((ctx)->uc_mcontext.regs[0] = (val))
+static inline long sigsys_get_arg(ucontext_t *ctx, int n)
+{
+    return (long)ctx->uc_mcontext.regs[n];
+}
+
+static inline void sigsys_set_return(ucontext_t *ctx, long val)
+{
+    ctx->uc_mcontext.regs[0] = val;
+}
 #endif
 
 #ifdef __x86_64__
 /* x86_64 syscall argument registers: rdi, rsi, rdx, r10, r8, r9 */
-#define SIGSYS_REG(ctx, n) ((long)(ctx)->uc_mcontext.gregs[ \
-    (n) == 0 ? REG_RDI : \
-    (n) == 1 ? REG_RSI : \
-    (n) == 2 ? REG_RDX : \
-    (n) == 3 ? REG_R10 : \
-    (n) == 4 ? REG_R8 : REG_R9])
-#define SIGSYS_SET_RETURN(ctx, val) ((ctx)->uc_mcontext.gregs[REG_RAX] = (val))
+static inline long sigsys_get_arg(ucontext_t *ctx, int n)
+{
+    static const int reg_map[] = { REG_RDI, REG_RSI, REG_RDX, REG_R10, REG_R8, REG_R9 };
+    return (long)ctx->uc_mcontext.gregs[reg_map[n]];
+}
+
+static inline void sigsys_set_return(ucontext_t *ctx, long val)
+{
+    ctx->uc_mcontext.gregs[REG_RAX] = val;
+}
 #endif
 
 #endif /* FAKECHROOT_SIGACTION_H */

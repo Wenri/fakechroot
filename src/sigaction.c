@@ -138,14 +138,14 @@ static bool handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 #define CTX_SETUP(name) ucontext_t *name = ctx
 
     /* Context-specific argument accessor for ucontext pointer */
-#define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
+#define CTX_ARG(ctx, n) sigsys_get_arg(ctx, n)
 
     /* No path expansion in signal handler context - return raw argument */
 #define CTX_EXPAND_PATH(ctx, arg_n) ((const char *)CTX_ARG(ctx, arg_n))
 #define CTX_EXPAND_PATH_AT(ctx, dirfd_n, path_n) ((const char *)CTX_ARG(ctx, path_n))
 
     /* Done: set return value and return */
-#define CTX_DONE(val) do { SIGSYS_SET_RETURN(ctx, val); return true; } while(0)
+#define CTX_DONE(val) do { sigsys_set_return(ctx, val); return true; } while(0)
 
     /* Expand REDIRECT_SEQ - generates all redirect case statements */
     BOOST_PP_SEQ_FOR_EACH(SYS_GEN_DISPATCH, 5, REDIRECT_SEQ)
@@ -182,14 +182,14 @@ static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
 
     /* Category 2: uid/gid syscalls return 0 (success, no-op) */
     if (is_noop_syscall(syscall_nr)) {
-        SIGSYS_SET_RETURN(ctx, 0);
+        sigsys_set_return(ctx, 0);
         debug("sigsys: syscall %d -> 0 (noop)", syscall_nr);
         return;
     }
 
     /* Category 3: blocked syscalls return ENOSYS */
     if (is_blocked_syscall(syscall_nr)) {
-        SIGSYS_SET_RETURN(ctx, -ENOSYS);
+        sigsys_set_return(ctx, -ENOSYS);
         debug("sigsys: syscall %d -> ENOSYS", syscall_nr);
         return;
     }

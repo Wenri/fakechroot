@@ -72,7 +72,7 @@ wrapper_proto(syscall, long, (long, ...));
  *
  * CTX_ARG - Argument accessor:
  * - syscall.c: #define CTX_ARG(ctx, n) (ctx)[n]
- * - sigaction.c: #define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
+ * - sigaction.c: #define CTX_ARG(ctx, n) sigsys_get_arg(ctx, n)
  *
  * CTX_EXPAND_PATH - Path expansion for chroot (arg index):
  * - syscall.c: expand_chroot_path(path, alloca(FAKECHROOT_PATH_MAX))
