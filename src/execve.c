@@ -290,10 +290,12 @@ LOCAL exec_ctx_t exec_prepare(const char *filename)
     exec_ctx_t ctx = {0};
     int file, i;
 
-    /* Expand filename path, reusing ctx.hashbang as temp buffer */
-    filename = expand_chroot_path(filename, ctx.hashbang);
-    strncpy(ctx.expandedFilename, filename, FAKECHROOT_PATH_MAX - 1);
-    ctx.expandedFilename[FAKECHROOT_PATH_MAX - 1] = '\0';
+    /* Expand filename path directly into ctx.expandedFilename */
+    const char *ptr = expand_chroot_path(filename, ctx.expandedFilename);
+    if (ptr != ctx.expandedFilename) {
+        strncpy(ctx.expandedFilename, ptr, FAKECHROOT_PATH_MAX - 1);
+        ctx.expandedFilename[FAKECHROOT_PATH_MAX - 1] = '\0';
+    }
 
     /* Check if executing dynamic linker directly */
     if (is_dynamic_linker(ctx.expandedFilename)) {
