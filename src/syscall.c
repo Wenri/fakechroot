@@ -84,8 +84,13 @@ wrapper(syscall, long, (long number, ...))
      * Path-related syscalls perform path expansion via CTX_EXPAND_PATH* macros.
      * ================================================================ */
 
-    /* Context-specific argument accessor for syscall_args_t */
-#define CTX_ARG(ctx, n) (ctx).a[n]
+    /* Context setup: extract all va_args into array */
+#define CTX_SETUP(name) long name[6] = { \
+        va_arg(ap, long), va_arg(ap, long), va_arg(ap, long), \
+        va_arg(ap, long), va_arg(ap, long), va_arg(ap, long) }
+
+    /* Context-specific argument accessor for array */
+#define CTX_ARG(ctx, n) (ctx)[n]
 
     /* Path expansion using alloca() for stack-based buffer allocation.
      * Each expansion gets its own buffer, so link() works without special handling. */
@@ -95,12 +100,6 @@ wrapper(syscall, long, (long number, ...))
 #define CTX_EXPAND_PATH_AT(ctx, dirfd_n, path_n) \
     expand_chroot_path_at((int)CTX_ARG(ctx, dirfd_n), \
                           (const char *)CTX_ARG(ctx, path_n), alloca(FAKECHROOT_PATH_MAX))
-
-    /* Setup: extract all va_args into syscall_args_t */
-#define SYSCALL_SETUP(ap) ((syscall_args_t){ \
-    .a = { va_arg(ap, long), va_arg(ap, long), va_arg(ap, long), \
-           va_arg(ap, long), va_arg(ap, long), va_arg(ap, long) } \
-})
 
     /* Done: cleanup and return */
 #define SYSCALL_DONE(val) do { va_end(ap); return val; } while(0)
@@ -112,7 +111,7 @@ wrapper(syscall, long, (long number, ...))
         BOOST_PP_TUPLE_ELEM(2, elem), \
         BOOST_PP_TUPLE_ELEM(3, elem), \
         BOOST_PP_TUPLE_ELEM(4, elem), \
-        SYSCALL_SETUP(ap), SYSCALL_DONE)
+        SYSCALL_DONE)
 
     /* Expand PASSTHROUGH_SEQ - generates passthrough case statements */
     BOOST_PP_SEQ_FOR_EACH(SYSCALL_DISPATCH, _, PASSTHROUGH_SEQ)
@@ -122,10 +121,10 @@ wrapper(syscall, long, (long number, ...))
 
 #undef SYSCALL_DISPATCH
 #undef SYSCALL_DONE
-#undef SYSCALL_SETUP
 #undef CTX_EXPAND_PATH_AT
 #undef CTX_EXPAND_PATH
 #undef CTX_ARG
+#undef CTX_SETUP
 
 #ifdef SYS_rt_sigaction
     /*

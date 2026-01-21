@@ -124,7 +124,6 @@ struct sigaction saved_sigsys_handler;
 static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 {
     long ret;
-    sigsys_ctx_t sctx = ctx;
 
     switch (syscall_nr) {
 
@@ -136,6 +135,9 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
      * Note: No path expansion in signal handler context - programs that
      * bypass glibc typically use absolute paths anyway.
      * ================================================================ */
+
+    /* Context setup: use ucontext pointer directly */
+#define CTX_SETUP(name) sigsys_ctx_t name = ctx
 
     /* Context-specific argument accessor for sigsys_ctx_t (ucontext pointer) */
 #define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
@@ -154,7 +156,7 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
         BOOST_PP_TUPLE_ELEM(2, elem), \
         BOOST_PP_TUPLE_ELEM(3, elem), \
         BOOST_PP_TUPLE_ELEM(4, elem), \
-        sctx, SIGSYS_DONE)
+        SIGSYS_DONE)
 
     /* Expand REDIRECT_SEQ - generates all redirect case statements */
     BOOST_PP_SEQ_FOR_EACH(SIGSYS_DISPATCH, _, REDIRECT_SEQ)
@@ -164,6 +166,7 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 #undef CTX_EXPAND_PATH_AT
 #undef CTX_EXPAND_PATH
 #undef CTX_ARG
+#undef CTX_SETUP
 
     default:
         return 0;  /* Not handled */

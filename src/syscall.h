@@ -60,23 +60,15 @@ wrapper_proto(syscall, long, (long, ...));
 
 /*
  * ============================================================================
- * Syscall wrapper context type
- *
- * Holds pre-extracted va_args for use with SYS_GEN_* macros.
- * ============================================================================
- */
-typedef struct {
-    long a[6];
-} syscall_args_t;
-
-/*
- * ============================================================================
  * Context-specific macros (must be defined by each source file)
  *
- * CTX_ARG - Argument accessor:
- * - syscall.c: #define CTX_ARG(ctx, n) (ctx).a[n]
- * - sigaction.c: #define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
+ * CTX_SETUP - Context initialization (declares the _ctx variable):
+ * - syscall.c: long _ctx[6] = { va_arg(ap, long), ... }
+ * - sigaction.c: sigsys_ctx_t _ctx = ctx
  *
+ * CTX_ARG - Argument accessor:
+ * - syscall.c: #define CTX_ARG(ctx, n) (ctx)[n]
+ * - sigaction.c: #define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
  *
  * CTX_EXPAND_PATH - Path expansion for chroot (arg index):
  * - syscall.c: expand_chroot_path(path, alloca(FAKECHROOT_PATH_MAX))
@@ -86,8 +78,8 @@ typedef struct {
  * - syscall.c: expand_chroot_path_at(dirfd, path, alloca(FAKECHROOT_PATH_MAX))
  * - sigaction.c: (const char *)CTX_ARG(ctx, n)  [no-op in signal handler]
  *
- * Note: _Generic cannot be used here because both branches must be
- * syntactically valid, but (ctx).a[n] is invalid when ctx is a pointer.
+ * Note: CTX_SETUP is a declaration macro (not expression) because C doesn't
+ * allow array assignment, but brace initialization works: long arr[6] = {...};
  * ============================================================================
  */
 
@@ -98,29 +90,28 @@ typedef struct {
  * These macros generate case statements for the switch. They take:
  * - from: Source syscall name (without SYS_ prefix)
  * - to: Target syscall name (without SYS_ prefix)
- * - extra: Extra argument(s) to append
- * - ctx_expr: Context expression (syscall_args_t or sigsys_ctx_t)
+ * - e1, e2: Extra argument(s) to append (unused ones ignored)
  * - DONE: Macro to handle result (return or goto)
+ *
+ * Each macro calls CTX_SETUP(_ctx) to initialize the context variable.
+ * CTX_SETUP must be defined by the including file as a declaration macro.
  *
  * Note: DONE must be context-specific because control flow differs:
  * - syscall.c: va_end(ap); return val;
  * - sigaction.c: ret = val; goto set_return;
- *
- * Important: We use typeof() to ensure ctx_expr is evaluated only once,
- * avoiding issues with side effects (e.g., va_arg in SYSCALL_SETUP).
  * ============================================================================
  */
 
 /*
- * All macros take 6 parameters: (from, to, e1, e2, ctx_expr, DONE)
+ * All macros take 5 parameters: (from, to, e1, e2, DONE)
  * This allows uniform dispatch from REDIRECT_SEQ entries.
  * Macros that don't need e2 (or both) simply ignore them.
  */
 
 /* AT syscall: syscall(dirfd, path, mode) -> target(dirfd, path, mode, e1) */
-#define SYS_GEN_AT(from, to, e1, e2, ctx_expr, DONE) \
+#define SYS_GEN_AT(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
-        typeof(ctx_expr) _ctx = ctx_expr; \
+        CTX_SETUP(_ctx); \
         const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
         long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
@@ -128,9 +119,9 @@ typedef struct {
     }
 
 /* Path with 0 args: syscall(path) -> target(AT_FDCWD, path, e1) */
-#define SYS_GEN_PATH0(from, to, e1, e2, ctx_expr, DONE) \
+#define SYS_GEN_PATH0(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
-        typeof(ctx_expr) _ctx = ctx_expr; \
+        CTX_SETUP(_ctx); \
         const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
         long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
@@ -138,9 +129,9 @@ typedef struct {
     }
 
 /* Path with 1 arg: syscall(path, a2) -> target(AT_FDCWD, path, a2, e1) */
-#define SYS_GEN_PATH1(from, to, e1, e2, ctx_expr, DONE) \
+#define SYS_GEN_PATH1(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
-        typeof(ctx_expr) _ctx = ctx_expr; \
+        CTX_SETUP(_ctx); \
         const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
         long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, CTX_ARG(_ctx, 1), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
@@ -148,9 +139,9 @@ typedef struct {
     }
 
 /* Path with 2 args: syscall(path, a2, a3) -> target(AT_FDCWD, path, a2, a3, e1) */
-#define SYS_GEN_PATH2(from, to, e1, e2, ctx_expr, DONE) \
+#define SYS_GEN_PATH2(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
-        typeof(ctx_expr) _ctx = ctx_expr; \
+        CTX_SETUP(_ctx); \
         const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
         long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
@@ -158,9 +149,9 @@ typedef struct {
     }
 
 /* 0 args: syscall() -> target(e1) */
-#define SYS_GEN_R0(from, to, e1, e2, ctx_expr, DONE) \
+#define SYS_GEN_R0(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
-        typeof(ctx_expr) _ctx = ctx_expr; \
+        CTX_SETUP(_ctx); \
         (void)_ctx; /* unused but needed for consistency */ \
         long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
@@ -168,18 +159,18 @@ typedef struct {
     }
 
 /* 3 args: syscall(a1, a2, a3) -> target(a1, a2, a3, e1) */
-#define SYS_GEN_R3(from, to, e1, e2, ctx_expr, DONE) \
+#define SYS_GEN_R3(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
-        typeof(ctx_expr) _ctx = ctx_expr; \
+        CTX_SETUP(_ctx); \
         long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
 /* 4 args + 2 extras: syscall(a1, a2, a3, a4) -> target(a1, a2, a3, a4, e1, e2) */
-#define SYS_GEN_R4_2(from, to, e1, e2, ctx_expr, DONE) \
+#define SYS_GEN_R4_2(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
-        typeof(ctx_expr) _ctx = ctx_expr; \
+        CTX_SETUP(_ctx); \
         long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), CTX_ARG(_ctx, 3), e1, e2); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
@@ -187,9 +178,9 @@ typedef struct {
 
 /* symlink(target, linkpath) -> symlinkat(target, AT_FDCWD, linkpath)
  * Note: Only linkpath (arg 1) is expanded - target (arg 0) is stored as-is */
-#define SYS_GEN_SYMLINK(from, to, e1, e2, ctx_expr, DONE) \
+#define SYS_GEN_SYMLINK(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
-        typeof(ctx_expr) _ctx = ctx_expr; \
+        CTX_SETUP(_ctx); \
         const char *_newpath = CTX_EXPAND_PATH(_ctx, 1); \
         long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), AT_FDCWD, _newpath); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
@@ -197,9 +188,9 @@ typedef struct {
     }
 
 /* link(oldpath, newpath) -> linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0) */
-#define SYS_GEN_LINK(from, to, e1, e2, ctx_expr, DONE) \
+#define SYS_GEN_LINK(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
-        typeof(ctx_expr) _ctx = ctx_expr; \
+        CTX_SETUP(_ctx); \
         const char *_oldpath = CTX_EXPAND_PATH(_ctx, 0); \
         const char *_newpath = CTX_EXPAND_PATH(_ctx, 1); \
         long result = nextcall(syscall)( BOOST_PP_CAT(SYS_, to), AT_FDCWD, _oldpath, AT_FDCWD, _newpath, 0); \
@@ -208,9 +199,9 @@ typedef struct {
     }
 
 /* AT syscall with 1 extra arg: syscall(dirfd, path, a3) -> to(dirfd, path_expanded, a3) */
-#define SYS_GEN_AT1(from, to, e1, e2, ctx_expr, DONE) \
+#define SYS_GEN_AT1(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
-        typeof(ctx_expr) _ctx = ctx_expr; \
+        CTX_SETUP(_ctx); \
         const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
         long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2)); \
         debug("syscall: " #from " -> " #to " = %ld", result); \
@@ -218,9 +209,9 @@ typedef struct {
     }
 
 /* AT syscall with 2 extra args: syscall(dirfd, path, a3, a4) -> to(dirfd, path_expanded, a3, a4) */
-#define SYS_GEN_AT2(from, to, e1, e2, ctx_expr, DONE) \
+#define SYS_GEN_AT2(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
-        typeof(ctx_expr) _ctx = ctx_expr; \
+        CTX_SETUP(_ctx); \
         const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
         long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2), CTX_ARG(_ctx, 3)); \
         debug("syscall: " #from " -> " #to " = %ld", result); \
@@ -228,9 +219,9 @@ typedef struct {
     }
 
 /* AT syscall with 3 extra args: syscall(dirfd, path, a3, a4, a5) -> to(dirfd, path_expanded, a3, a4, a5) */
-#define SYS_GEN_AT3(from, to, e1, e2, ctx_expr, DONE) \
+#define SYS_GEN_AT3(from, to, e1, e2, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
-        typeof(ctx_expr) _ctx = ctx_expr; \
+        CTX_SETUP(_ctx); \
         const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
         long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2), CTX_ARG(_ctx, 3), CTX_ARG(_ctx, 4)); \
         debug("syscall: " #from " -> " #to " = %ld", result); \
