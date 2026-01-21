@@ -192,7 +192,7 @@ LOCAL char * getcwd_real(char *pt, size_t size)
         if (pt) {
                 ptsize = 0;
                 if (!size) {
-                        errno = EINVAL;
+                        __set_errno(EINVAL);
                         return (NULL);
                 }
                 ept = pt + size;
@@ -223,7 +223,7 @@ LOCAL char * getcwd_real(char *pt, size_t size)
         root_dev = s.st_dev;
         root_ino = s.st_ino;
 
-        errno = 0;                      /* XXX readdir has no error return. */
+        __set_errno(0);                 /* XXX readdir has no error return. */
 
         for (first = 1;; first = 0) {
                 /* Stat the current level. */
@@ -297,7 +297,7 @@ LOCAL char * getcwd_real(char *pt, size_t size)
                                 if (LSTAT(up, &s)) {
                                         if (!save_errno)
                                                 save_errno = errno;
-                                        errno = 0;
+                                        __set_errno(0);
                                         continue;
                                 }
                                 if (s.st_dev == dev && s.st_ino == ino)
@@ -313,7 +313,7 @@ LOCAL char * getcwd_real(char *pt, size_t size)
                         char *npt;
 
                         if (!ptsize) {
-                                errno = ERANGE;
+                                __set_errno(ERANGE);
                                 goto err;
                         }
                         len = ept - bpt;
@@ -342,7 +342,7 @@ notfound:
          * errno to ENOENT.
          */
         if (!errno)
-                errno = save_errno ? save_errno : ENOENT;
+                __set_errno(save_errno ? save_errno : ENOENT);
         /* FALLTHROUGH */
 err:
         save_errno = errno;
@@ -353,7 +353,7 @@ err:
         if (dir)
                 (void)closedir(dir);
 
-        errno = save_errno;
+        __set_errno(save_errno);
 
     debug("getcwd_real(NULL, %d)", pt, size);
         return (NULL);

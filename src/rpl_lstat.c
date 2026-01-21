@@ -82,7 +82,7 @@ rpl_lstat (const char *file, struct stat *sbuf)
      even if the symlink is not pointing to a directory.  */
   if (!S_ISLNK (sbuf->st_mode))
     {
-      errno = ENOTDIR;
+      __set_errno(ENOTDIR);
       return -1;
     }
   return stat (file, sbuf);

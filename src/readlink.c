@@ -33,7 +33,7 @@ wrapper(readlink, READLINK_TYPE_RETURN, (const char * path, char * buf, READLINK
 
     debug("readlink(\"%s\", &buf, %zd)", path, bufsiz);
     if (!strcmp(path, "/etc/malloc.conf")) {
-        errno = ENOENT;
+        __set_errno(ENOENT);
         return -1;
     }
     path = expand_chroot_path(path, fakechroot_buf);

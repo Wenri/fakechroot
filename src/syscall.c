@@ -62,7 +62,7 @@ wrapper(syscall, long, (long number, ...))
 
     if (is_blocked_syscall(number)) {
         debug("syscall(%ld) -> ENOSYS (blocked)", number);
-        errno = ENOSYS;
+        __set_errno(ENOSYS);
         return -1;
     }
 

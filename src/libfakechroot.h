@@ -52,12 +52,6 @@
 # define CONSTRUCTOR
 #endif
 
-#ifdef HAVE___ATTRIBUTE__SECTION_DATA_FAKECHROOT
-# define SECTION_DATA_FAKECHROOT __attribute__((section("data.fakechroot")))
-#else
-# define SECTION_DATA_FAKECHROOT
-#endif
-
 #if defined(PATH_MAX)
 # define FAKECHROOT_PATH_MAX PATH_MAX
 #elif defined(_POSIX_PATH_MAX)
@@ -147,8 +141,7 @@ static inline const char *expand_chroot_path_at(int dirfd, const char *path, cha
 
 
 #define wrapper_decl_proto(function) \
-    extern LOCAL fakechroot_##function##_fn_t fakechroot_##function##_nextfunc SECTION_DATA_FAKECHROOT
-
+    extern LOCAL fakechroot_##function##_fn_t fakechroot_##function##_nextfunc
 /*
  * Lazy-load stub using GCC's __builtin_apply to forward all arguments.
  * Most args are in registers anyway (6 on x86-64, 8 on aarch64).
@@ -166,7 +159,7 @@ static inline const char *expand_chroot_path_at(int dirfd, const char *path, cha
 
 #define wrapper_decl(function, return_type, arguments) \
     wrapper_stub(function, return_type, arguments); \
-    LOCAL fakechroot_##function##_fn_t fakechroot_##function##_nextfunc SECTION_DATA_FAKECHROOT = \
+    LOCAL fakechroot_##function##_fn_t fakechroot_##function##_nextfunc = \
         fakechroot_##function##_stub
 
 #define wrapper_fn_t(function, return_type, arguments) \

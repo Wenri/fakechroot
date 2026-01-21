@@ -87,7 +87,6 @@ AC_DEFINE_UNQUOTED([BIN_SH], ["$ac_cv_path_SH"], [BIN_SH])
 # Checks for compiler features
 ACX_CHECK_C_ALIGNOF
 ACX_CHECK_C_ATTRIBUTE([constructor])
-ACX_CHECK_C_ATTRIBUTE_SECTION([data.fakechroot])
 ACX_CHECK_C_ATTRIBUTE_VISIBILITY
 
 # Checks for libraries.

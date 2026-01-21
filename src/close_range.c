@@ -40,7 +40,7 @@
 wrapper(close_range, int, (unsigned int first, unsigned int last, unsigned int flags))
 {
     debug("close_range(%u, %u, %u) -> returning ENOSYS for Android", first, last, flags);
-    errno = ENOSYS;
+    __set_errno(ENOSYS);
     return -1;
 }
 

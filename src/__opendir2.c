@@ -156,7 +156,7 @@ wrapper(__opendir2, DIR *, (const char * name, int flags))
         if (stat(name, &statb) != 0)
                 return (NULL);
         if (!S_ISDIR(statb.st_mode)) {
-                errno = ENOTDIR;
+                __set_errno(ENOTDIR);
                 return (NULL);
         }
         if ((fd = _open(name, O_RDONLY | O_NONBLOCK)) == -1)
@@ -190,7 +190,7 @@ __opendir_common(int fd, const char *name, int flags)
         if (_fstat(fd, &statb) != 0)
                 goto fail;
         if (!S_ISDIR(statb.st_mode)) {
-                errno = ENOTDIR;
+                __set_errno(ENOTDIR);
                 goto fail;
         }
         if (_fcntl(fd, F_SETFD, FD_CLOEXEC) == -1 ||

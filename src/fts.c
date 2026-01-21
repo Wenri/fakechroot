@@ -139,7 +139,7 @@ FTS_OPEN(char * const *argv, int options,
 
         /* Options check. */
         if (options & ~FTS_OPTIONMASK) {
-                errno = EINVAL;
+                __set_errno(EINVAL);
                 return (NULL);
         }
 
@@ -169,7 +169,7 @@ FTS_OPEN(char * const *argv, int options,
         for (root = NULL, nitems = 0; *argv; ++argv, ++nitems) {
                 /* Don't allow zero-length paths. */
                 if ((len = strlen(*argv)) == 0) {
-                        errno = ENOENT;
+                        __set_errno(ENOENT);
                         goto mem3;
                 }
 
@@ -465,7 +465,7 @@ name:           t = sp->fts_path + NAPPEND(p->fts_parent);
                  * can distinguish between error and EOF.
                  */
                 free(p);
-                errno = 0;
+                __set_errno(0);
                 return (sp->fts_cur = NULL);
         }
 
@@ -487,7 +487,7 @@ name:           t = sp->fts_path + NAPPEND(p->fts_parent);
                 if (FCHDIR(sp, p->fts_symfd)) {
                         saved_errno = errno;
                         (void)close(p->fts_symfd);
-                        errno = saved_errno;
+                        __set_errno(saved_errno);
                         SET(FTS_STOP);
                         sp->fts_cur = p;
                         return (NULL);
@@ -516,7 +516,7 @@ FTS_SET(FTSOBJ *sp, FTSENTRY *p, int instr)
         debug("fts_set(&sp, &p, %d)", instr);
         if (instr && instr != FTS_AGAIN && instr != FTS_FOLLOW &&
             instr != FTS_NOINSTR && instr != FTS_SKIP) {
-                errno = EINVAL;
+                __set_errno(EINVAL);
                 return (1);
         }
         p->fts_instr = instr;
@@ -532,7 +532,7 @@ FTS_CHILDREN(FTSOBJ *sp, int instr)
         debug("fts_children(&sp, %d)", instr);
 
         if (instr && instr != FTS_NAMEONLY) {
-                errno = EINVAL;
+                __set_errno(EINVAL);
                 return (NULL);
         }
 
@@ -543,7 +543,7 @@ FTS_CHILDREN(FTSOBJ *sp, int instr)
          * Errno set to 0 so user can distinguish empty directory from
          * an error.
          */
-        errno = 0;
+        __set_errno(0);
 
         /* Fatal errors stop here. */
         if (ISSET(FTS_STOP))
@@ -760,7 +760,7 @@ mem1:                           saved_errno = errno;
                         (void)closedir(dirp);
                         cur->fts_info = FTS_ERR;
                         SET(FTS_STOP);
-                        errno = ENAMETOOLONG;
+                        __set_errno(ENAMETOOLONG);
                         return (NULL);
                 }
 
@@ -875,7 +875,7 @@ fts_stat(FTSOBJ *sp, FTSENTRY *p, int follow)
                 if (STAT(p->fts_accpath, sbp)) {
                         saved_errno = errno;
                         if (!LSTAT(p->fts_accpath, sbp)) {
-                                errno = 0;
+                                __set_errno(0);
                                 return (FTS_SLNONE);
                         }
                         p->fts_errno = saved_errno;
@@ -1061,7 +1061,7 @@ fts_palloc(FTSOBJ *sp, size_t more)
                 if (sp->fts_path)
                         free(sp->fts_path);
                 sp->fts_path = NULL;
-                errno = ENAMETOOLONG;
+                __set_errno(ENAMETOOLONG);
                 return (1);
         }
         sp->fts_pathlen += more;
@@ -1136,7 +1136,7 @@ fts_safe_changedir(FTSOBJ *sp, FTSENTRY *p, int fd, char *path)
                 goto bail;
         }
         if (p->fts_dev != sb.st_dev || p->fts_ino != sb.st_ino) {
-                errno = ENOENT;         /* disinformation */
+                __set_errno(ENOENT);    /* disinformation */
                 ret = -1;
                 goto bail;
         }
@@ -1145,7 +1145,7 @@ bail:
         oerrno = errno;
         if (fd < 0)
                 (void)close(newfd);
-        errno = oerrno;
+        __set_errno(oerrno);
         return (ret);
 }
 
