@@ -51,9 +51,6 @@
 #include "readlink.h"
 #include "open.h"
 
-/* Declare the saved handler from sigaction.c */
-extern struct sigaction saved_sigsys_handler;
-
 
 wrapper(syscall, long, (long number, ...))
 {

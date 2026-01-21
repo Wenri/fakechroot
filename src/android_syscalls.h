@@ -43,6 +43,13 @@
  * SIGSYS Handler Protection
  * ============================================================================
  *
+ * Saved SIGSYS handler from other code (e.g., Go runtime).
+ * Defined in sigaction.c, used by both sigaction wrapper and syscall wrapper.
+ */
+extern struct sigaction saved_sigsys_handler;
+
+/*
+ *
  * Helper for protecting our SIGSYS handler from being replaced.
  * Used by both sigaction() wrapper and syscall(SYS_rt_sigaction) wrapper.
  *
