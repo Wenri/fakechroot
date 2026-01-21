@@ -194,7 +194,7 @@ wrapper_proto(syscall, long, (long, ...));
         CTX_SETUP(_ctx); \
         const char *_path = CTX_EXPAND_PATH(_ctx, 1); \
         long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), \
-            CTX_ARG(_ctx, 0) BOOST_PP_EXPR_IF(p2, , AT_FDCWD), _path \
+            CTX_ARG(_ctx, 0) BOOST_PP_COMMA_IF(p2) BOOST_PP_EXPR_IF(p2, AT_FDCWD), _path \
             BOOST_PP_REPEAT(p1, SYS_GEN_EMIT_ARG_FROMX, 2)); \
         debug("syscall: " #from " = %ld", result); \
         CTX_DONE(result); \
