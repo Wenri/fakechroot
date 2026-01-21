@@ -102,7 +102,7 @@
  *
  * Syscall handling is split across two files:
  * - android_syscalls.h: is_noop_syscall() and is_blocked_syscall()
- * - syscall_macros.h: REDIRECT_TABLE for Category 1 syscall redirects
+ * - syscall.h: REDIRECT_SEQ for Category 1 syscall redirects
  *   (e.g., faccessat2 -> faccessat), expanded via handle_sigsys_redirect()
  */
 
@@ -113,7 +113,7 @@ struct sigaction saved_sigsys_handler;
 
 /*
  * Handle redirect syscalls by calling target syscall directly.
- * Uses REDIRECT_TABLE from syscall_macros.h (single source of truth).
+ * Uses REDIRECT_SEQ from syscall.h (single source of truth).
  * Returns 1 if handled (and sets return value), 0 if not a redirect syscall.
  *
  * Note: Unlike the syscall() wrapper in syscall.c, we cannot do path expansion
@@ -130,8 +130,11 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 
     /* ================================================================
      * Android seccomp bypass - redirect blocked syscalls to alternatives
-     * Uses REDIRECT_SEQ from syscall_macros.h (single source of truth)
+     * Uses REDIRECT_SEQ from syscall.h (single source of truth)
      * with Boost.PP for iteration.
+     *
+     * Note: No path expansion in signal handler context - programs that
+     * bypass glibc typically use absolute paths anyway.
      * ================================================================ */
 
     /* Context-specific argument accessor for sigsys_ctx_t (ucontext pointer) */
@@ -139,6 +142,11 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 
     /* Context-specific syscall caller - use nextcall for proper interception */
 #define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
+
+    /* No path expansion in signal handler context - return raw argument */
+#define CTX_EXPAND_PATH(ctx, arg_n) ((const char *)CTX_ARG(ctx, arg_n))
+#define CTX_EXPAND_PATH_AT(ctx, dirfd_n, path_n) ((const char *)CTX_ARG(ctx, path_n))
+#define CTX_EXPAND_PATH_2(ctx, arg_n) ((const char *)CTX_ARG(ctx, arg_n))
 
     /* Done: set return value and goto cleanup */
 #define SIGSYS_DONE(val) do { ret = val; goto set_return; } while(0)
@@ -157,6 +165,9 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 
 #undef SIGSYS_DISPATCH
 #undef SIGSYS_DONE
+#undef CTX_EXPAND_PATH_2
+#undef CTX_EXPAND_PATH_AT
+#undef CTX_EXPAND_PATH
 #undef CTX_CALL
 #undef CTX_ARG
 

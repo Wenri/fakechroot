@@ -104,15 +104,27 @@ typedef ucontext_t * sigsys_ctx_t;
 
 /*
  * ============================================================================
- * Context-specific argument accessors
+ * Context-specific macros (must be defined by each source file)
  *
- * CTX_ARG must be defined by each source file before using SYS_GEN_* macros:
+ * CTX_ARG - Argument accessor:
  * - syscall.c: #define CTX_ARG(ctx, n) (ctx).a[n]
  * - sigaction.c: #define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
  *
- * Similarly, CTX_CALL must be defined per-file:
+ * CTX_CALL - Syscall invocation:
  * - syscall.c: #define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
- * - sigaction.c: #define CTX_CALL(ctx, ...) syscall(__VA_ARGS__)
+ * - sigaction.c: #define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
+ *
+ * CTX_EXPAND_PATH - Path expansion for chroot (arg index):
+ * - syscall.c: expand_chroot_path((const char *)CTX_ARG(ctx, n), fakechroot_buf)
+ * - sigaction.c: (const char *)CTX_ARG(ctx, n)  [no-op in signal handler]
+ *
+ * CTX_EXPAND_PATH_AT - Path expansion for AT syscalls (dirfd index, path index):
+ * - syscall.c: expand_chroot_path_at(dirfd, path, fakechroot_buf)
+ * - sigaction.c: (const char *)CTX_ARG(ctx, n)  [no-op in signal handler]
+ *
+ * CTX_EXPAND_PATH_2 - Second path expansion (for link() which needs 2 buffers):
+ * - syscall.c: expand_chroot_path(path, fakechroot_buf2)
+ * - sigaction.c: (const char *)CTX_ARG(ctx, n)  [no-op in signal handler]
  *
  * Note: _Generic cannot be used here because both branches must be
  * syntactically valid, but (ctx).a[n] is invalid when ctx is a pointer.
@@ -149,7 +161,8 @@ typedef ucontext_t * sigsys_ctx_t;
 #define SYS_GEN_AT(from, to, e1, e2, ctx_expr, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
+        const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -158,7 +171,8 @@ typedef ucontext_t * sigsys_ctx_t;
 #define SYS_GEN_PATH0(from, to, e1, e2, ctx_expr, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, CTX_ARG(_ctx, 0), e1); \
+        const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -167,7 +181,8 @@ typedef ucontext_t * sigsys_ctx_t;
 #define SYS_GEN_PATH1(from, to, e1, e2, ctx_expr, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), e1); \
+        const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, CTX_ARG(_ctx, 1), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -176,7 +191,8 @@ typedef ucontext_t * sigsys_ctx_t;
 #define SYS_GEN_PATH2(from, to, e1, e2, ctx_expr, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
+        const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path, CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
@@ -209,20 +225,25 @@ typedef ucontext_t * sigsys_ctx_t;
         DONE(result); \
     }
 
-/* symlink(target, linkpath) -> symlinkat(target, AT_FDCWD, linkpath) */
+/* symlink(target, linkpath) -> symlinkat(target, AT_FDCWD, linkpath)
+ * Note: Only linkpath (arg 1) is expanded - target (arg 0) is stored as-is */
 #define SYS_GEN_SYMLINK(from, to, e1, e2, ctx_expr, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), AT_FDCWD, CTX_ARG(_ctx, 1)); \
+        const char *_newpath = CTX_EXPAND_PATH(_ctx, 1); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), AT_FDCWD, _newpath); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
-/* link(oldpath, newpath) -> linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0) */
+/* link(oldpath, newpath) -> linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0)
+ * Note: Both paths are expanded (uses CTX_EXPAND_PATH_2 for newpath) */
 #define SYS_GEN_LINK(from, to, e1, e2, ctx_expr, DONE) \
     case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, CTX_ARG(_ctx, 0), AT_FDCWD, CTX_ARG(_ctx, 1), 0); \
+        const char *_oldpath = CTX_EXPAND_PATH(_ctx, 0); \
+        const char *_newpath = CTX_EXPAND_PATH_2(_ctx, 1); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, _oldpath, AT_FDCWD, _newpath, 0); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }

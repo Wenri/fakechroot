@@ -69,6 +69,7 @@ wrapper(syscall, long, (long number, ...))
     }
 
     char fakechroot_buf[FAKECHROOT_PATH_MAX];
+    char fakechroot_buf2[FAKECHROOT_PATH_MAX];  /* Second buffer for link() */
     va_list ap;
     va_start(ap, number);
 
@@ -103,12 +104,11 @@ wrapper(syscall, long, (long number, ...))
 
     /* ================================================================
      * Android seccomp bypass - redirect blocked syscalls to alternatives
-     * Uses REDIRECT_SEQ from syscall_macros.h (single source of truth)
+     * Uses REDIRECT_SEQ from syscall.h (single source of truth)
      * with Boost.PP for iteration.
      *
-     * Note: These redirects do NOT perform path expansion. This is
-     * intentional - programs using raw syscall() typically use absolute
-     * paths, and the unified approach simplifies the implementation.
+     * Path-related syscalls (chmod, chown, rmdir, symlink, link, faccessat2,
+     * fchmodat2) perform path expansion via CTX_EXPAND_PATH* macros.
      * ================================================================ */
 
     /* Context-specific argument accessor for syscall_args_t */
@@ -116,6 +116,18 @@ wrapper(syscall, long, (long number, ...))
 
     /* Context-specific syscall caller - use nextcall to bypass our own wrapper */
 #define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
+
+    /* Path expansion for syscall wrapper context */
+#define CTX_EXPAND_PATH(ctx, arg_n) \
+    expand_chroot_path((const char *)CTX_ARG(ctx, arg_n), fakechroot_buf)
+
+#define CTX_EXPAND_PATH_AT(ctx, dirfd_n, path_n) \
+    expand_chroot_path_at((int)CTX_ARG(ctx, dirfd_n), \
+                          (const char *)CTX_ARG(ctx, path_n), fakechroot_buf)
+
+    /* Second buffer for link() which needs two path expansions */
+#define CTX_EXPAND_PATH_2(ctx, arg_n) \
+    expand_chroot_path((const char *)CTX_ARG(ctx, arg_n), fakechroot_buf2)
 
     /* Setup: extract all va_args into syscall_args_t */
 #define SYSCALL_SETUP(ap) ((syscall_args_t){ \
@@ -141,6 +153,9 @@ wrapper(syscall, long, (long number, ...))
 #undef SYSCALL_DISPATCH
 #undef SYSCALL_DONE
 #undef SYSCALL_SETUP
+#undef CTX_EXPAND_PATH_2
+#undef CTX_EXPAND_PATH_AT
+#undef CTX_EXPAND_PATH
 #undef CTX_CALL
 #undef CTX_ARG
 
