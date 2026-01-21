@@ -37,7 +37,7 @@
  * - SYS_GEN_FORWARD: Forward args without path handling, append zeros
  * - SYS_GEN_AT: AT syscalls (dirfd, path, ...) with path expansion
  * - SYS_GEN_PATH: Non-AT syscalls (path, ...) redirected to AT versions
- * - SYS_GEN_SYMLINK/LINK: Special multi-path syscalls
+ * - SYS_GEN_PATH1/LINK: Special path-at-arg1 and multi-path syscalls
  */
 
 #ifndef FAKECHROOT_SYSCALL_H
@@ -118,17 +118,15 @@ wrapper_proto(syscall, long, (long, ...));
  * | AT          | dirfd, path, ...                     | arg 1 (AT)         | to(dirfd, path, ..., 0...)            | nargs   | num_zeros |
  * | PATH        | path, ...                            | arg 0              | to(AT_FDCWD, path, ..., extra)        | nargs   | extra     |
  * | PATH_NOEXTRA| path, ...                            | arg 0              | to(path, ...)                         | nargs   | _         |
- * | SYMLINK     | target, linkpath                     | arg 1 only         | to(target, AT_FDCWD, linkpath)        | _       | _         |
+ * | PATH1       | arg0, path, ...                      | arg 1              | to(arg0, [AT_FDCWD,] path, ...)       | nargs   | fdcwd     |
  * | LINK        | oldpath, newpath                     | both args          | to(AT_FDCWD, old, AT_FDCWD, new, 0)   | _       | _         |
- * | LINKAT      | olddirfd, old, newdirfd, new, flags  | args 1,3 (AT)      | to(olddirfd, old, newdirfd, new, fl)  | _       | _         |
- * | RENAMEAT    | olddirfd, old, newdirfd, new[, fl]   | args 1,3 (AT)      | to(olddirfd, old, newdirfd, new, ...) | ntrail  | _         |
+ * | RENAMEAT    | olddirfd, old, newdirfd, new[, fl]   | args 1,3 (AT)      | to(olddirfd, old, newdirfd, new, ...) | nargs   | _         |
  * | SYMLINKAT   | target, newdirfd, linkpath           | arg 2 (AT)         | to(target, newdirfd, linkpath)        | _       | _         |
- * | INOTIFY     | fd, pathname, mask                   | arg 1              | to(fd, pathname, mask)                | _       | _         |
  * ============================================================================
  *
  * Note: FORWARD, AT, PATH, PATH_NOEXTRA all have p1=nargs.
  *       PATH has p2=extra for AT_REMOVEDIR.
- *       RENAMEAT has p1=0 for renameat, p1=1 for renameat2 (flags arg).
+ *       RENAMEAT handles renameat (p1=0), renameat2 (p1=1), and linkat (p1=1).
  */
 
 /* Helper: emit ", CTX_ARG(_ctx, n+x)" for BOOST_PP_REPEAT (x = starting arg index) */
@@ -188,15 +186,17 @@ wrapper_proto(syscall, long, (long, ...));
         CTX_DONE(result); \
     }
 
-/* symlink(target, linkpath) -> symlinkat(target, AT_FDCWD, linkpath)
- * Note: Only linkpath (arg 1) is expanded - target (arg 0) is stored as-is
- * p1, p2: unused */
-#define SYS_GEN_SYMLINK(from, to, p1, p2) \
+/* Path at arg 1: (arg0, path, ...) with optional AT_FDCWD insertion
+ * Handles: symlink (insert AT_FDCWD), inotify_add_watch (no AT_FDCWD)
+ * p1: trailing args after path, p2: insert AT_FDCWD (1=yes, 0=no) */
+#define SYS_GEN_PATH1(from, to, p1, p2) \
     case BOOST_PP_CAT(SYS_, from): { \
         CTX_SETUP(_ctx); \
-        const char *_newpath = CTX_EXPAND_PATH(_ctx, 1); \
-        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), AT_FDCWD, _newpath); \
-        debug("redirect: " #from " -> " #to " = %ld", result); \
+        const char *_path = CTX_EXPAND_PATH(_ctx, 1); \
+        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), \
+            CTX_ARG(_ctx, 0) BOOST_PP_EXPR_IF(p2, , AT_FDCWD), _path \
+            BOOST_PP_REPEAT(p1, SYS_GEN_EMIT_ARG_FROMX, 2)); \
+        debug("syscall: " #from " = %ld", result); \
         CTX_DONE(result); \
     }
 
@@ -225,23 +225,9 @@ wrapper_proto(syscall, long, (long, ...));
         CTX_DONE(result); \
     }
 
-/* linkat: (olddirfd, oldpath, newdirfd, newpath, flags)
+/* renameat/linkat: (olddirfd, oldpath, newdirfd, newpath[, flags])
  * Both paths expanded with their respective dirfds
- * p1, p2: unused */
-#define SYS_GEN_LINKAT(from, to, p1, p2) \
-    case BOOST_PP_CAT(SYS_, from): { \
-        CTX_SETUP(_ctx); \
-        const char *_oldpath = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
-        const char *_newpath = CTX_EXPAND_PATH_AT(_ctx, 2, 3); \
-        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), \
-            CTX_ARG(_ctx, 0), _oldpath, CTX_ARG(_ctx, 2), _newpath, CTX_ARG(_ctx, 4)); \
-        debug("syscall: " #from " = %ld", result); \
-        CTX_DONE(result); \
-    }
-
-/* renameat: (olddirfd, oldpath, newdirfd, newpath) or renameat2 with flags
- * Both paths expanded with their respective dirfds
- * p1: 0 for renameat, 1 for renameat2 (has flags arg), p2: unused */
+ * p1: trailing arg count (0=renameat, 1=renameat2/linkat), p2: unused */
 #define SYS_GEN_RENAMEAT(from, to, p1, p2) \
     case BOOST_PP_CAT(SYS_, from): { \
         CTX_SETUP(_ctx); \
@@ -267,25 +253,12 @@ wrapper_proto(syscall, long, (long, ...));
         CTX_DONE(result); \
     }
 
-/* inotify_add_watch: (fd, pathname, mask) - path is arg 1, not arg 0
- * p1, p2: unused */
-#define SYS_GEN_INOTIFY(from, to, p1, p2) \
-    case BOOST_PP_CAT(SYS_, from): { \
-        CTX_SETUP(_ctx); \
-        const char *_path = CTX_EXPAND_PATH(_ctx, 1); \
-        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), \
-            CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2)); \
-        debug("syscall: " #from " = %ld", result); \
-        CTX_DONE(result); \
-    }
-
-
 /*
  * ============================================================================
  * Redirect Table as Boost.PP Sequence
  *
  * Each entry is a 4-tuple: (PATTERN, from, to, p1, p2)
- * - PATTERN: Generator macro suffix (FORWARD, AT, PATH, SYMLINK, LINK)
+ * - PATTERN: Generator macro suffix (FORWARD, AT, PATH, PATH1, LINK, etc.)
  * - from: Source syscall name (without SYS_ prefix)
  * - to: Target syscall name (without SYS_ prefix)
  * - p1, p2: Pattern-specific parameters (see table above)
@@ -363,9 +336,9 @@ wrapper_proto(syscall, long, (long, ...));
 #endif
 
 /* Filesystem syscalls
- * Format: (SYMLINK/LINK, from, to, _, _) */
+ * Format: (PATH1/LINK, from, to, p1, p2) */
 #ifdef SYS_symlink
-#define REDIRECT_ENTRY_symlink ((SYMLINK, symlink, symlinkat, _, _))
+#define REDIRECT_ENTRY_symlink ((PATH1, symlink, symlinkat, 0, 1))
 #else
 #define REDIRECT_ENTRY_symlink
 #endif
@@ -469,7 +442,7 @@ wrapper_proto(syscall, long, (long, ...));
 
 /* Group 2: Two-path AT syscalls */
 #ifdef SYS_linkat
-#define PASSTHROUGH_ENTRY_linkat ((LINKAT, linkat, linkat, _, _))
+#define PASSTHROUGH_ENTRY_linkat ((RENAMEAT, linkat, linkat, 1, _))
 #else
 #define PASSTHROUGH_ENTRY_linkat
 #endif
@@ -568,7 +541,7 @@ wrapper_proto(syscall, long, (long, ...));
 
 /* Group 5: Misc syscalls */
 #ifdef SYS_inotify_add_watch
-#define PASSTHROUGH_ENTRY_inotify_add_watch ((INOTIFY, inotify_add_watch, inotify_add_watch, _, _))
+#define PASSTHROUGH_ENTRY_inotify_add_watch ((PATH1, inotify_add_watch, inotify_add_watch, 1, 0))
 #else
 #define PASSTHROUGH_ENTRY_inotify_add_watch
 #endif
