@@ -102,25 +102,15 @@ wrapper(syscall, long, (long number, ...))
                           (const char *)CTX_ARG(ctx, path_n), alloca(FAKECHROOT_PATH_MAX))
 
     /* Done: cleanup and return */
-#define SYSCALL_DONE(val) do { va_end(ap); return val; } while(0)
-
-    /* Dispatch macro for BOOST_PP_SEQ_FOR_EACH - extracts all 5 tuple elements */
-#define SYSCALL_DISPATCH(r, data, elem) \
-    BOOST_PP_CAT(SYS_GEN_, BOOST_PP_TUPLE_ELEM(0, elem))( \
-        BOOST_PP_TUPLE_ELEM(1, elem), \
-        BOOST_PP_TUPLE_ELEM(2, elem), \
-        BOOST_PP_TUPLE_ELEM(3, elem), \
-        BOOST_PP_TUPLE_ELEM(4, elem), \
-        SYSCALL_DONE)
+#define CTX_DONE(val) do { va_end(ap); return val; } while(0)
 
     /* Expand PASSTHROUGH_SEQ - generates passthrough case statements */
-    BOOST_PP_SEQ_FOR_EACH(SYSCALL_DISPATCH, _, PASSTHROUGH_SEQ)
+    BOOST_PP_SEQ_FOR_EACH(SYS_GEN_DISPATCH, 5, PASSTHROUGH_SEQ)
 
     /* Expand REDIRECT_SEQ - generates redirect case statements */
-    BOOST_PP_SEQ_FOR_EACH(SYSCALL_DISPATCH, _, REDIRECT_SEQ)
+    BOOST_PP_SEQ_FOR_EACH(SYS_GEN_DISPATCH, 5, REDIRECT_SEQ)
 
-#undef SYSCALL_DISPATCH
-#undef SYSCALL_DONE
+#undef CTX_DONE
 #undef CTX_EXPAND_PATH_AT
 #undef CTX_EXPAND_PATH
 #undef CTX_ARG

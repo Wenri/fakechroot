@@ -147,22 +147,12 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 #define CTX_EXPAND_PATH_AT(ctx, dirfd_n, path_n) ((const char *)CTX_ARG(ctx, path_n))
 
     /* Done: set return value and goto cleanup */
-#define SIGSYS_DONE(val) do { ret = val; goto set_return; } while(0)
-
-    /* Dispatch macro for BOOST_PP_SEQ_FOR_EACH */
-#define SIGSYS_DISPATCH(r, data, elem) \
-    BOOST_PP_CAT(SYS_GEN_, BOOST_PP_TUPLE_ELEM(0, elem))( \
-        BOOST_PP_TUPLE_ELEM(1, elem), \
-        BOOST_PP_TUPLE_ELEM(2, elem), \
-        BOOST_PP_TUPLE_ELEM(3, elem), \
-        BOOST_PP_TUPLE_ELEM(4, elem), \
-        SIGSYS_DONE)
+#define CTX_DONE(val) do { ret = val; goto set_return; } while(0)
 
     /* Expand REDIRECT_SEQ - generates all redirect case statements */
-    BOOST_PP_SEQ_FOR_EACH(SIGSYS_DISPATCH, _, REDIRECT_SEQ)
+    BOOST_PP_SEQ_FOR_EACH(SYS_GEN_DISPATCH, 5, REDIRECT_SEQ)
 
-#undef SIGSYS_DISPATCH
-#undef SIGSYS_DONE
+#undef CTX_DONE
 #undef CTX_EXPAND_PATH_AT
 #undef CTX_EXPAND_PATH
 #undef CTX_ARG
