@@ -96,7 +96,7 @@ LOCAL int fakechroot_debug (const char *fmt, ...)
 
 
 /* Check if path is on exclude list */
-LOCAL bool fakechroot_localdir (const char * p_path)
+LOCAL bool fakechroot_localdir(const char *p_path)
 {
     const char *v_path = p_path;
     char cwd_path[FAKECHROOT_PATH_MAX];
@@ -104,24 +104,29 @@ LOCAL bool fakechroot_localdir (const char * p_path)
     if (!p_path)
         return false;
 
-    /* We need to expand relative paths */
+    /* Expand relative paths */
     if (p_path[0] != '/') {
         getcwd_real(cwd_path, FAKECHROOT_PATH_MAX);
         narrow_chroot_path(cwd_path);
         v_path = cwd_path;
     }
 
-    /* We try to find if we need direct access to a file */
-    {
-        const size_t len = strlen(v_path);
-        size_t i;
+    const size_t len = strlen(v_path);
 
-        for (i = 0; i < list_max; i++) {
-            if (exclude_length[i] > len ||
-                    v_path[exclude_length[i] - 1] != (exclude_list[i])[exclude_length[i] - 1] ||
-                    strncmp(exclude_list[i], v_path, exclude_length[i]) != 0) continue;
-            if (exclude_length[i] == len || v_path[exclude_length[i]] == '/') return true;
-        }
+    for (size_t i = 0; i < list_max; i++) {
+        const size_t prefix_len = exclude_length[i];
+
+        /* Path must be at least as long as the prefix */
+        if (len < prefix_len)
+            continue;
+
+        /* Check prefix match */
+        if (strncmp(exclude_list[i], v_path, prefix_len) != 0)
+            continue;
+
+        /* Match if exact or followed by '/' */
+        if (len == prefix_len || v_path[prefix_len] == '/')
+            return true;
     }
 
     return false;
