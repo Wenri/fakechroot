@@ -49,6 +49,7 @@
 #include <boost/preprocessor/repetition/repeat.hpp>
 #include <boost/preprocessor/arithmetic/add.hpp>
 #include <boost/preprocessor/control/expr_if.hpp>
+#include <boost/preprocessor/punctuation/comma_if.hpp>
 #include <boost/preprocessor/logical/not.hpp>
 
 /*
