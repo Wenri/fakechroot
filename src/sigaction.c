@@ -175,8 +175,8 @@ static void fakechroot_sigsys_handler(int sig, siginfo_t *info, void *ucontext)
         goto chain_handler;
     }
 
-    ucontext_t *ctx = (ucontext_t *)ucontext;
-    int syscall_nr = info->si_syscall;
+    ucontext_t *const ctx = (ucontext_t *)ucontext;
+    const int syscall_nr = info->si_syscall;
 
     /* Quick checks first - avoid switch statement overhead */
 

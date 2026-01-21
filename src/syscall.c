@@ -119,10 +119,10 @@ wrapper(syscall, long, (long number, ...))
      * Uses shared helper from android_syscalls.h (same logic as sigaction wrapper).
      */
     case SYS_rt_sigaction: {
-        int signum = va_arg(ap, int);
-        struct sigaction *act = va_arg(ap, struct sigaction *);
-        struct sigaction *oldact = va_arg(ap, struct sigaction *);
-        size_t sigsetsize = va_arg(ap, size_t);
+        const int signum = va_arg(ap, int);
+        struct sigaction *const act = va_arg(ap, struct sigaction *);
+        struct sigaction *const oldact = va_arg(ap, struct sigaction *);
+        const size_t sigsetsize = va_arg(ap, size_t);
         va_end(ap);
 
         /* Only intercept SIGSYS - pass through all other signals */
@@ -140,12 +140,12 @@ wrapper(syscall, long, (long number, ...))
          * This matches glibc's syscall() implementation which also
          * extracts exactly 6 va_arg unconditionally.
          * Note: noop/blocked syscalls already handled at function start. */
-        long a1 = va_arg(ap, long);
-        long a2 = va_arg(ap, long);
-        long a3 = va_arg(ap, long);
-        long a4 = va_arg(ap, long);
-        long a5 = va_arg(ap, long);
-        long a6 = va_arg(ap, long);
+        const long a1 = va_arg(ap, long);
+        const long a2 = va_arg(ap, long);
+        const long a3 = va_arg(ap, long);
+        const long a4 = va_arg(ap, long);
+        const long a5 = va_arg(ap, long);
+        const long a6 = va_arg(ap, long);
         va_end(ap);
         return nextcall(syscall)(number, a1, a2, a3, a4, a5, a6);
     }
@@ -168,7 +168,6 @@ static void fakechroot_set_process_name(void) CONSTRUCTOR;
 static void fakechroot_set_process_name(void)
 {
     char buf[4096];
-    int fd;
     ssize_t n;
     const char *name;
 
@@ -183,7 +182,7 @@ static void fakechroot_set_process_name(void)
         return;
 
     /* Reuse buffer for cmdline */
-    fd = nextcall(open)("/proc/self/cmdline", O_RDONLY);
+    const int fd = nextcall(open)("/proc/self/cmdline", O_RDONLY);
     if (fd < 0)
         return;
 
