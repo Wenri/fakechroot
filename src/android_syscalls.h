@@ -37,6 +37,7 @@
 #include <sys/syscall.h>
 #include <signal.h>
 #include <string.h>
+#include <stdbool.h>
 
 /*
  * ============================================================================
@@ -63,7 +64,7 @@ extern struct sigaction saved_sigsys_handler;
 
 /*
  * Handle SIGSYS sigaction request.
- * Returns 0 on success (always succeeds for SIGSYS).
+ * Returns 0 (success) to enable tail call optimization at call sites.
  *
  * Parameters:
  *   act    - New handler to install (or NULL to query)
@@ -78,15 +79,11 @@ static inline int handle_sigsys_sigaction(
         memcpy(oldact, &saved_sigsys_handler, sizeof(struct sigaction));
     }
 
-    /* If just querying (act == NULL), we're done */
-    if (act == NULL) {
-        return 0;
+    /* Save their handler for chaining but don't actually install it */
+    if (act != NULL) {
+        memcpy(&saved_sigsys_handler, act, sizeof(struct sigaction));
     }
 
-    /* Save their handler for chaining but don't actually install it */
-    memcpy(&saved_sigsys_handler, act, sizeof(struct sigaction));
-
-    /* Return success - caller thinks their handler is installed */
     return 0;
 }
 
@@ -95,7 +92,7 @@ static inline int handle_sigsys_sigaction(
  * These syscalls can't actually change user/group, so we silently succeed.
  * (Category 2 in syscall.c wrapper)
  */
-static inline int is_noop_syscall(int syscall_nr)
+static inline bool is_noop_syscall(int syscall_nr)
 {
     switch (syscall_nr) {
 #ifdef SYS_setuid
@@ -146,9 +143,9 @@ static inline int is_noop_syscall(int syscall_nr)
 #ifdef SYS_setfsgid32
     case SYS_setfsgid32:
 #endif
-        return 1;
+        return true;
     default:
-        return 0;
+        return false;
     }
 }
 
@@ -161,7 +158,7 @@ static inline int is_noop_syscall(int syscall_nr)
  * syscall_macros.h, which generates redirect code for both the
  * syscall() wrapper and SIGSYS handler.
  */
-static inline int is_blocked_syscall(int syscall_nr)
+static inline bool is_blocked_syscall(int syscall_nr)
 {
     switch (syscall_nr) {
     /* Filesystem */
@@ -338,9 +335,9 @@ static inline int is_blocked_syscall(int syscall_nr)
 #ifdef SYS_pidfd_send_signal
     case SYS_pidfd_send_signal:
 #endif
-        return 1;
+        return true;
     default:
-        return 0;
+        return false;
     }
 }
 

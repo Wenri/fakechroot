@@ -121,10 +121,8 @@ struct sigaction saved_sigsys_handler;
  * - Raw syscalls that bypass glibc typically use absolute paths
  * - The main benefit is avoiding the ENOSYS retry overhead
  */
-static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
+static bool handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 {
-    long ret;
-
     switch (syscall_nr) {
 
     /* ================================================================
@@ -146,8 +144,8 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 #define CTX_EXPAND_PATH(ctx, arg_n) ((const char *)CTX_ARG(ctx, arg_n))
 #define CTX_EXPAND_PATH_AT(ctx, dirfd_n, path_n) ((const char *)CTX_ARG(ctx, path_n))
 
-    /* Done: set return value and goto cleanup */
-#define CTX_DONE(val) do { ret = val; goto set_return; } while(0)
+    /* Done: set return value and return */
+#define CTX_DONE(val) do { SIGSYS_SET_RETURN(ctx, val); return true; } while(0)
 
     /* Expand REDIRECT_SEQ - generates all redirect case statements */
     BOOST_PP_SEQ_FOR_EACH(SYS_GEN_DISPATCH, 5, REDIRECT_SEQ)
@@ -159,12 +157,8 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 #undef CTX_SETUP
 
     default:
-        return 0;  /* Not handled */
+        return false;  /* Not handled */
     }
-
-set_return:
-    SIGSYS_SET_RETURN(ctx, ret);
-    return 1;  /* Handled */
 }
 
 /*
