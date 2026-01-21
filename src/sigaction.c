@@ -26,12 +26,12 @@
 #include <string.h>
 #include <errno.h>
 #include <unistd.h>       /* syscall() */
-#include <sys/ucontext.h>
 #include <sys/syscall.h>
 #include <fcntl.h>        /* AT_FDCWD, AT_REMOVEDIR */
 #include "libfakechroot.h"
 #include "android_syscalls.h"
 #include "syscall.h"
+#include "sigaction.h"
 
 #ifndef SYS_SECCOMP
 #define SYS_SECCOMP 1

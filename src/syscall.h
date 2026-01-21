@@ -31,7 +31,7 @@
  * The deduplication is achieved through:
  * - Boost.PP for iteration over the redirect table (REDIRECT_SEQ)
  * - Context-specific CTX_ARG and CTX_EXPAND_PATH* macros defined per-file
- * - Context types (syscall_args_t, sigsys_ctx_t) for type safety
+ * - Context types for type safety (syscall_args_t here, sigsys_ctx_t in sigaction.h)
  *
  * Patterns supported:
  * - SYS_GEN_AT: AT syscalls that drop last arg (faccessat2 -> faccessat)
@@ -46,7 +46,6 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/tuple/elem.hpp>
 #include <boost/preprocessor/cat.hpp>
-#include <sys/ucontext.h>
 
 /*
  * ============================================================================
@@ -61,46 +60,14 @@ wrapper_proto(syscall, long, (long, ...));
 
 /*
  * ============================================================================
- * SIGSYS Register Access (for signal handler context)
+ * Syscall wrapper context type
  *
- * These macros extract syscall arguments from the ucontext registers when
- * handling SIGSYS signals from Android's seccomp filter.
+ * Holds pre-extracted va_args for use with SYS_GEN_* macros.
  * ============================================================================
  */
-#ifdef __aarch64__
-#define SIGSYS_REG(ctx, n) ((long)(ctx)->uc_mcontext.regs[n])
-#define SIGSYS_SET_RETURN(ctx, val) ((ctx)->uc_mcontext.regs[0] = (val))
-#endif
-
-#ifdef __x86_64__
-#include <sys/ucontext.h>
-/* x86_64 syscall argument registers: rdi, rsi, rdx, r10, r8, r9 */
-#define SIGSYS_REG(ctx, n) ((long)(ctx)->uc_mcontext.gregs[ \
-    (n) == 0 ? REG_RDI : \
-    (n) == 1 ? REG_RSI : \
-    (n) == 2 ? REG_RDX : \
-    (n) == 3 ? REG_R10 : \
-    (n) == 4 ? REG_R8 : REG_R9])
-#define SIGSYS_SET_RETURN(ctx, val) ((ctx)->uc_mcontext.gregs[REG_RAX] = (val))
-#endif
-
-/*
- * ============================================================================
- * Context types for _Generic dispatch
- *
- * These types allow the same generator macros to work in both contexts:
- * - syscall_args_t: Pre-extracted va_args in syscall() wrapper
- * - sigsys_ctx_t: Pointer to ucontext in SIGSYS handler
- * ============================================================================
- */
-
-/* Syscall wrapper context - holds pre-extracted va_args */
 typedef struct {
     long a[6];
 } syscall_args_t;
-
-/* SIGSYS handler context - pointer to ucontext */
-typedef ucontext_t * sigsys_ctx_t;
 
 /*
  * ============================================================================
