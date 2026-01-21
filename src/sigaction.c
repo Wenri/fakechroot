@@ -137,9 +137,9 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
      * ================================================================ */
 
     /* Context setup: use ucontext pointer directly */
-#define CTX_SETUP(name) sigsys_ctx_t name = ctx
+#define CTX_SETUP(name) ucontext_t *name = ctx
 
-    /* Context-specific argument accessor for sigsys_ctx_t (ucontext pointer) */
+    /* Context-specific argument accessor for ucontext pointer */
 #define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
 
     /* No path expansion in signal handler context - return raw argument */

@@ -53,7 +53,4 @@
 #define SIGSYS_SET_RETURN(ctx, val) ((ctx)->uc_mcontext.gregs[REG_RAX] = (val))
 #endif
 
-/* SIGSYS handler context - pointer to ucontext */
-typedef ucontext_t * sigsys_ctx_t;
-
 #endif /* FAKECHROOT_SIGACTION_H */

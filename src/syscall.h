@@ -31,7 +31,7 @@
  * The deduplication is achieved through:
  * - Boost.PP for iteration over the redirect table (REDIRECT_SEQ)
  * - Context-specific CTX_ARG and CTX_EXPAND_PATH* macros defined per-file
- * - Context types for type safety (syscall_args_t here, sigsys_ctx_t in sigaction.h)
+ * - Context types: long[6] array in syscall.c, ucontext_t* in sigaction.c
  *
  * Patterns supported:
  * - SYS_GEN_FORWARD: Forward args without path handling, append zeros
@@ -49,6 +49,7 @@
 #include <boost/preprocessor/repetition/repeat.hpp>
 #include <boost/preprocessor/arithmetic/add.hpp>
 #include <boost/preprocessor/control/expr_if.hpp>
+#include <boost/preprocessor/logical/not.hpp>
 
 /*
  * ============================================================================
@@ -67,7 +68,7 @@ wrapper_proto(syscall, long, (long, ...));
  *
  * CTX_SETUP - Context initialization (declares the _ctx variable):
  * - syscall.c: long _ctx[6] = { va_arg(ap, long), ... }
- * - sigaction.c: sigsys_ctx_t _ctx = ctx
+ * - sigaction.c: ucontext_t *_ctx = ctx
  *
  * CTX_ARG - Argument accessor:
  * - syscall.c: #define CTX_ARG(ctx, n) (ctx)[n]
