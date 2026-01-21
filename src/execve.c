@@ -469,9 +469,6 @@ static void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const
     char *shebangArg;
     int direct_exec = 0;
 
-    /* Buffer for reading interpreter's PT_INTERP */
-    char interp_buf[FAKECHROOT_PATH_MAX];
-
     /* Parse shebang line and expand interpreter path into ctx->interpPath */
     displayArgv0 = parse_shebang(ctx, &shebangArg);
 
@@ -484,6 +481,7 @@ static void exec_build_script_argv(exec_ctx_t *ctx, char **newargv, char * const
     if (fd >= 0) {
         unsigned char header[64];
         if (read(fd, header, sizeof(header)) >= (ssize_t)sizeof(header)) {
+            char interp_buf[FAKECHROOT_PATH_MAX];
             int result = exec_read_elf_interp(interp_buf, fd, header);
             if (result == 1 && is_direct_exec_interp(interp_buf)) {
                 direct_exec = 1;
