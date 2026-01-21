@@ -46,7 +46,7 @@
 #include <sys/socket.h>   /* socket types */
 #include "libfakechroot.h"
 #include "android_syscalls.h"
-#include "syscall_macros.h"
+#include "syscall.h"
 #include "readlink.h"
 #include "open.h"
 

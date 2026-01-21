@@ -31,7 +31,7 @@
 #include <fcntl.h>        /* AT_FDCWD, AT_REMOVEDIR */
 #include "libfakechroot.h"
 #include "android_syscalls.h"
-#include "syscall_macros.h"
+#include "syscall.h"
 
 #ifndef SYS_SECCOMP
 #define SYS_SECCOMP 1
@@ -137,8 +137,8 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
     /* Context-specific argument accessor for sigsys_ctx_t (ucontext pointer) */
 #define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
 
-    /* Context-specific syscall caller - use raw syscall in signal handler */
-#define CTX_CALL(ctx, ...) syscall(__VA_ARGS__)
+    /* Context-specific syscall caller - use nextcall for proper interception */
+#define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)
 
     /* Done: set return value and goto cleanup */
 #define SIGSYS_DONE(val) do { ret = val; goto set_return; } while(0)

@@ -18,21 +18,20 @@
 */
 
 /*
- * syscall_macros.h - Unified macros for syscall wrapper and SIGSYS handler
+ * syscall.h - Unified syscall wrapper and SIGSYS handler support
  *
- * This file provides a unified macro system for generating syscall redirect
- * code in two contexts:
+ * This file provides:
+ * 1. Extern declaration for syscall wrapper's nextfunc (shared across files)
+ * 2. Unified macro system for generating syscall redirect code
  *
- * 1. syscall() wrapper (syscall.c): Uses va_arg to extract arguments, performs
- *    path expansion, and returns directly.
- *
- * 2. SIGSYS handler (sigaction.c): Extracts arguments from ucontext registers,
- *    no path expansion (signal handler context), uses goto for control flow.
+ * Two contexts use these macros:
+ * - syscall() wrapper (syscall.c): Uses va_arg, performs path expansion
+ * - SIGSYS handler (sigaction.c): Uses ucontext registers, no path expansion
  *
  * The deduplication is achieved through:
  * - Boost.PP for iteration over the redirect table (REDIRECT_SEQ)
- * - C11 _Generic for type-based dispatch of argument accessors
- * - Context types (syscall_args_t, sigsys_ctx_t) for _Generic selection
+ * - Context-specific CTX_ARG and CTX_CALL macros defined per-file
+ * - Context types (syscall_args_t, sigsys_ctx_t) for type safety
  *
  * Patterns supported:
  * - SYS_GEN_AT: AT syscalls that drop last arg (faccessat2 -> faccessat)
@@ -41,13 +40,24 @@
  * - SYS_GEN_SYMLINK/LINK: Special multi-path syscalls
  */
 
-#ifndef SYSCALL_MACROS_H
-#define SYSCALL_MACROS_H
+#ifndef FAKECHROOT_SYSCALL_H
+#define FAKECHROOT_SYSCALL_H
 
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/preprocessor/tuple/elem.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <sys/ucontext.h>
+
+/*
+ * ============================================================================
+ * Syscall wrapper prototype declaration
+ *
+ * This allows other files (sigaction.c) to call through the syscall wrapper
+ * using nextcall(syscall), ensuring consistent interception behavior.
+ * Requires libfakechroot.h to be included first for wrapper_proto macro.
+ * ============================================================================
+ */
+wrapper_proto(syscall, long, (long, ...));
 
 /*
  * ============================================================================
@@ -372,4 +382,4 @@ typedef ucontext_t * sigsys_ctx_t;
         return nextcall(syscall)(number, dirfd, pathname, a3, a4, a5); \
     }
 
-#endif /* SYSCALL_MACROS_H */
+#endif /* FAKECHROOT_SYSCALL_H */
