@@ -109,8 +109,8 @@ LOCAL int fakechroot_debug (const char *fmt, ...)
 
 
 /* Check if path matches any prefix in the given list */
-static bool match_prefix_list(const char *v_path, size_t len,
-                              const char * const *list, const size_t *lengths, size_t count)
+static inline bool match_prefix_list(const char *v_path, size_t len,
+                                     const char * const *list, const size_t *lengths, size_t count)
 {
     for (size_t i = 0; i < count; i++) {
         const size_t prefix_len = lengths[i];
@@ -153,11 +153,8 @@ LOCAL bool fakechroot_localdir(const char *p_path)
     if (match_prefix_list(v_path, len, include_list, include_length, include_max))
         return false;  /* NOT local, should translate */
 
-    /* Check exclude list */
-    if (match_prefix_list(v_path, len, exclude_list, exclude_length, exclude_max))
-        return true;   /* Local, no translate */
-
-    return false;
+    /* Check exclude list (tail call) */
+    return match_prefix_list(v_path, len, exclude_list, exclude_length, exclude_max);
 }
 
 
