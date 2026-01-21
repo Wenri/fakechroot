@@ -432,6 +432,7 @@ ACX_CHECK_FUNC_ARGTYPES([utimes],
 AC_ARG_VAR([ANDROID_ELFLOADER], [Path to Android glibc's ld.so dynamic linker])
 AC_ARG_VAR([ANDROID_BASE], [Installation prefix for Android (e.g., /data/data/.../usr)])
 AC_ARG_VAR([ANDROID_EXCLUDE_PATH], [Colon-separated paths excluded from chroot translation])
+AC_ARG_VAR([ANDROID_INCLUDE_PATH], [Colon-separated paths that override excludes (un-exclude)])
 
 # ANDROID_BASE is required and must be non-empty
 if test -z "$ANDROID_BASE"; then
@@ -460,6 +461,19 @@ if test -n "$ANDROID_EXCLUDE_PATH"; then
     EXCLUDE_PATH_SEQ=`echo "$ANDROID_EXCLUDE_PATH" | sed 's/\([[^:]]*\)/("\1")/g; s/://g'`
     AC_DEFINE_UNQUOTED([EXCLUDE_PATH_SEQ], [$EXCLUDE_PATH_SEQ],
         [Exclude paths as Boost.PP sequence])
+
+    # ANDROID_INCLUDE_PATH - paths that override excludes (required)
+    if test -z "$ANDROID_INCLUDE_PATH"; then
+        AC_MSG_ERROR([ANDROID_INCLUDE_PATH must be set when ANDROID_EXCLUDE_PATH is set])
+    fi
+
+    AC_DEFINE_UNQUOTED([ANDROID_INCLUDE_PATH], ["$ANDROID_INCLUDE_PATH"],
+        [Paths that override exclusions])
+
+    # Generate Boost.PP sequence for include paths
+    INCLUDE_PATH_SEQ=`echo "$ANDROID_INCLUDE_PATH" | sed 's/\([[^:]]*\)/("\1")/g; s/://g'`
+    AC_DEFINE_UNQUOTED([INCLUDE_PATH_SEQ], [$INCLUDE_PATH_SEQ],
+        [Include paths as Boost.PP sequence])
 fi
 
 AC_DEFINE([ANDROID_ARGV0_OPT], ["--argv0"], [Option for argv0 override in ld.so])

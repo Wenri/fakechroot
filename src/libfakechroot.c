@@ -52,9 +52,22 @@ static const char * const exclude_list[] = {
 static const size_t exclude_length[] = {
     BOOST_PP_SEQ_FOR_EACH(EXCLUDE_LENGTH_ELEM, _, EXCLUDE_PATH_SEQ)
 };
-static const size_t list_max = BOOST_PP_SEQ_SIZE(EXCLUDE_PATH_SEQ);
+static const size_t exclude_max = BOOST_PP_SEQ_SIZE(EXCLUDE_PATH_SEQ);
 #else
 #error "ANDROID_EXCLUDE_PATH must be set at configure time"
+#endif
+
+/* Compile-time include list (overrides excludes) from configure */
+#ifdef INCLUDE_PATH_SEQ
+static const char * const include_list[] = {
+    BOOST_PP_SEQ_FOR_EACH(EXCLUDE_PATH_ELEM, _, INCLUDE_PATH_SEQ)
+};
+static const size_t include_length[] = {
+    BOOST_PP_SEQ_FOR_EACH(EXCLUDE_LENGTH_ELEM, _, INCLUDE_PATH_SEQ)
+};
+static const size_t include_max = BOOST_PP_SEQ_SIZE(INCLUDE_PATH_SEQ);
+#else
+#error "ANDROID_INCLUDE_PATH must be set at configure time"
 #endif
 
 
@@ -95,7 +108,30 @@ LOCAL int fakechroot_debug (const char *fmt, ...)
 #include "getcwd.h"
 
 
-/* Check if path is on exclude list */
+/* Check if path matches any prefix in the given list */
+static bool match_prefix_list(const char *v_path, size_t len,
+                              const char * const *list, const size_t *lengths, size_t count)
+{
+    for (size_t i = 0; i < count; i++) {
+        const size_t prefix_len = lengths[i];
+
+        /* Path must be at least as long as the prefix */
+        if (len < prefix_len)
+            continue;
+
+        /* Check prefix match */
+        if (strncmp(list[i], v_path, prefix_len) != 0)
+            continue;
+
+        /* Match if exact or followed by '/' */
+        if (len == prefix_len || v_path[prefix_len] == '/')
+            return true;
+    }
+    return false;
+}
+
+
+/* Check if path is on exclude list (but not on include list) */
 LOCAL bool fakechroot_localdir(const char *p_path)
 {
     const char *v_path = p_path;
@@ -113,21 +149,13 @@ LOCAL bool fakechroot_localdir(const char *p_path)
 
     const size_t len = strlen(v_path);
 
-    for (size_t i = 0; i < list_max; i++) {
-        const size_t prefix_len = exclude_length[i];
+    /* Include list overrides exclude list */
+    if (match_prefix_list(v_path, len, include_list, include_length, include_max))
+        return false;  /* NOT local, should translate */
 
-        /* Path must be at least as long as the prefix */
-        if (len < prefix_len)
-            continue;
-
-        /* Check prefix match */
-        if (strncmp(exclude_list[i], v_path, prefix_len) != 0)
-            continue;
-
-        /* Match if exact or followed by '/' */
-        if (len == prefix_len || v_path[prefix_len] == '/')
-            return true;
-    }
+    /* Check exclude list */
+    if (match_prefix_list(v_path, len, exclude_list, exclude_length, exclude_max))
+        return true;   /* Local, no translate */
 
     return false;
 }
