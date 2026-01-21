@@ -48,7 +48,6 @@
 #include <boost/preprocessor/repetition/repeat.hpp>
 #include <boost/preprocessor/arithmetic/add.hpp>
 #include <boost/preprocessor/control/expr_if.hpp>
-#include <boost/preprocessor/control/iif.hpp>
 #include <boost/preprocessor/punctuation/comma_if.hpp>
 #include <boost/preprocessor/logical/not.hpp>
 #include <boost/preprocessor/facilities/is_empty.hpp>
@@ -166,24 +165,17 @@ wrapper_proto(syscall, long, (long, ...));
 /* PATH0: syscall(path, ...) -> target([AT_FDCWD,] path, ...[, extra])
  * p1: nargs
  * p2: empty = direct mode (no AT_FDCWD), otherwise = extra value with AT_FDCWD */
-
-/* Helper: direct mode call - to(path, args...) */
-#define SYS_GEN_PATH0_DIRECT_CALL(to, path, p1, p2) \
-    nextcall(syscall)(BOOST_PP_CAT(SYS_, to), path \
-        BOOST_PP_REPEAT(p1, SYS_GEN_EMIT_ARG_FROMX, 1))
-
-/* Helper: fdcwd mode call - to(AT_FDCWD, path, args..., extra) */
-#define SYS_GEN_PATH0_FDCWD_CALL(to, path, p1, p2) \
-    nextcall(syscall)(BOOST_PP_CAT(SYS_, to), AT_FDCWD, path \
-        BOOST_PP_REPEAT(p1, SYS_GEN_EMIT_ARG_FROMX, 1), p2)
-
 #define SYS_GEN_PATH0(from, to, p1, p2) \
     case BOOST_PP_CAT(SYS_, from): { \
         CTX_SETUP(_ctx); \
         const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
-        long result = BOOST_PP_IIF(BOOST_PP_IS_EMPTY(p2), \
-            SYS_GEN_PATH0_DIRECT_CALL, \
-            SYS_GEN_PATH0_FDCWD_CALL)(to, _path, p1, p2); \
+        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), \
+            BOOST_PP_EXPR_IF(BOOST_PP_NOT(BOOST_PP_IS_EMPTY(p2)), AT_FDCWD) \
+            BOOST_PP_COMMA_IF(BOOST_PP_NOT(BOOST_PP_IS_EMPTY(p2))) \
+            _path \
+            BOOST_PP_REPEAT(p1, SYS_GEN_EMIT_ARG_FROMX, 1) \
+            BOOST_PP_COMMA_IF(BOOST_PP_NOT(BOOST_PP_IS_EMPTY(p2))) \
+            BOOST_PP_EXPR_IF(BOOST_PP_NOT(BOOST_PP_IS_EMPTY(p2)), p2)); \
         debug("syscall: " #from " = %ld", result); \
         CTX_DONE(result); \
     }
