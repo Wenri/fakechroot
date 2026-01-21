@@ -75,39 +75,13 @@ wrapper(syscall, long, (long number, ...))
     switch (number) {
 
     /* ================================================================
-     * Pass-through AT syscalls with path expansion
-     * These use macros from syscall_macros.h to reduce boilerplate
-     * ================================================================ */
-
-#ifdef SYS_unlinkat
-    AT_PASSTHROUGH_1(SYS_unlinkat)
-#endif
-#ifdef SYS_mkdirat
-    AT_PASSTHROUGH_1(SYS_mkdirat)
-#endif
-#ifdef SYS_faccessat
-    AT_PASSTHROUGH_2(SYS_faccessat)
-#endif
-#ifdef SYS_openat
-    AT_PASSTHROUGH_2(SYS_openat)
-#endif
-#ifdef SYS_newfstatat
-    AT_PASSTHROUGH_2(SYS_newfstatat)
-#endif
-#ifdef SYS_readlinkat
-    AT_PASSTHROUGH_2(SYS_readlinkat)
-#endif
-#ifdef SYS_statx
-    AT_PASSTHROUGH_3(SYS_statx)
-#endif
-
-    /* ================================================================
-     * Android seccomp bypass - redirect blocked syscalls to alternatives
-     * Uses REDIRECT_SEQ from syscall.h (single source of truth)
-     * with Boost.PP for iteration.
+     * Syscall interception using unified SYS_GEN_* macros
      *
-     * Path-related syscalls (chmod, chown, rmdir, symlink, link, faccessat2,
-     * fchmodat2) perform path expansion via CTX_EXPAND_PATH* macros.
+     * Two categories:
+     * - PASSTHROUGH_SEQ: AT syscalls that expand path and call same syscall
+     * - REDIRECT_SEQ: Syscalls redirected to alternative syscalls
+     *
+     * Path-related syscalls perform path expansion via CTX_EXPAND_PATH* macros.
      * ================================================================ */
 
     /* Context-specific argument accessor for syscall_args_t */
@@ -140,7 +114,10 @@ wrapper(syscall, long, (long number, ...))
         BOOST_PP_TUPLE_ELEM(4, elem), \
         SYSCALL_SETUP(ap), SYSCALL_DONE)
 
-    /* Expand REDIRECT_SEQ - generates all redirect case statements */
+    /* Expand PASSTHROUGH_SEQ - generates passthrough case statements */
+    BOOST_PP_SEQ_FOR_EACH(SYSCALL_DISPATCH, _, PASSTHROUGH_SEQ)
+
+    /* Expand REDIRECT_SEQ - generates redirect case statements */
     BOOST_PP_SEQ_FOR_EACH(SYSCALL_DISPATCH, _, REDIRECT_SEQ)
 
 #undef SYSCALL_DISPATCH

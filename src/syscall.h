@@ -207,6 +207,36 @@ typedef struct {
         DONE(result); \
     }
 
+/* AT syscall with 1 extra arg: syscall(dirfd, path, a3) -> to(dirfd, path_expanded, a3) */
+#define SYS_GEN_AT1(from, to, e1, e2, ctx_expr, DONE) \
+    case BOOST_PP_CAT(SYS_, from): { \
+        typeof(ctx_expr) _ctx = ctx_expr; \
+        const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
+        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2)); \
+        debug("syscall: " #from " -> " #to " = %ld", result); \
+        DONE(result); \
+    }
+
+/* AT syscall with 2 extra args: syscall(dirfd, path, a3, a4) -> to(dirfd, path_expanded, a3, a4) */
+#define SYS_GEN_AT2(from, to, e1, e2, ctx_expr, DONE) \
+    case BOOST_PP_CAT(SYS_, from): { \
+        typeof(ctx_expr) _ctx = ctx_expr; \
+        const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
+        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2), CTX_ARG(_ctx, 3)); \
+        debug("syscall: " #from " -> " #to " = %ld", result); \
+        DONE(result); \
+    }
+
+/* AT syscall with 3 extra args: syscall(dirfd, path, a3, a4, a5) -> to(dirfd, path_expanded, a3, a4, a5) */
+#define SYS_GEN_AT3(from, to, e1, e2, ctx_expr, DONE) \
+    case BOOST_PP_CAT(SYS_, from): { \
+        typeof(ctx_expr) _ctx = ctx_expr; \
+        const char *_path = CTX_EXPAND_PATH_AT(_ctx, 0, 1); \
+        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), _path, CTX_ARG(_ctx, 2), CTX_ARG(_ctx, 3), CTX_ARG(_ctx, 4)); \
+        debug("syscall: " #from " -> " #to " = %ld", result); \
+        DONE(result); \
+    }
+
 /*
  * ============================================================================
  * Redirect Table as Boost.PP Sequence
@@ -317,49 +347,62 @@ typedef struct {
 
 /*
  * ============================================================================
- * AT Pass-through syscalls: expand path and call same syscall
- * Pattern: syscall(dirfd, pathname, ...) with path expansion
- * (These are NOT redirects - they call the same syscall with expanded path)
+ * Passthrough Table as Boost.PP Sequence
+ *
+ * These syscalls call the SAME syscall with path expansion (not redirect).
+ * Pattern: (AT1/AT2/AT3, syscall, syscall, _, _) - note from=to for passthrough
  * ============================================================================
  */
 
-/* AT syscall with 1 extra arg after pathname */
-#define AT_PASSTHROUGH_1(sysnum) \
-    case sysnum: { \
-        int dirfd = va_arg(ap, int); \
-        const char *pathname = va_arg(ap, const char *); \
-        long a3 = va_arg(ap, long); \
-        va_end(ap); \
-        debug("syscall(" #sysnum ", %d, \"%s\", %ld)", dirfd, pathname, a3); \
-        pathname = expand_chroot_path_at(dirfd, pathname, alloca(FAKECHROOT_PATH_MAX)); \
-        return nextcall(syscall)(number, dirfd, pathname, a3); \
-    }
+#ifdef SYS_unlinkat
+#define PASSTHROUGH_ENTRY_unlinkat ((AT1, unlinkat, unlinkat, _, _))
+#else
+#define PASSTHROUGH_ENTRY_unlinkat
+#endif
 
-/* AT syscall with 2 extra args after pathname */
-#define AT_PASSTHROUGH_2(sysnum) \
-    case sysnum: { \
-        int dirfd = va_arg(ap, int); \
-        const char *pathname = va_arg(ap, const char *); \
-        long a3 = va_arg(ap, long); \
-        long a4 = va_arg(ap, long); \
-        va_end(ap); \
-        debug("syscall(" #sysnum ", %d, \"%s\", ...)", dirfd, pathname); \
-        pathname = expand_chroot_path_at(dirfd, pathname, alloca(FAKECHROOT_PATH_MAX)); \
-        return nextcall(syscall)(number, dirfd, pathname, a3, a4); \
-    }
+#ifdef SYS_mkdirat
+#define PASSTHROUGH_ENTRY_mkdirat ((AT1, mkdirat, mkdirat, _, _))
+#else
+#define PASSTHROUGH_ENTRY_mkdirat
+#endif
 
-/* AT syscall with 3 extra args after pathname */
-#define AT_PASSTHROUGH_3(sysnum) \
-    case sysnum: { \
-        int dirfd = va_arg(ap, int); \
-        const char *pathname = va_arg(ap, const char *); \
-        long a3 = va_arg(ap, long); \
-        long a4 = va_arg(ap, long); \
-        long a5 = va_arg(ap, long); \
-        va_end(ap); \
-        debug("syscall(" #sysnum ", %d, \"%s\", ...)", dirfd, pathname); \
-        pathname = expand_chroot_path_at(dirfd, pathname, alloca(FAKECHROOT_PATH_MAX)); \
-        return nextcall(syscall)(number, dirfd, pathname, a3, a4, a5); \
-    }
+#ifdef SYS_faccessat
+#define PASSTHROUGH_ENTRY_faccessat ((AT2, faccessat, faccessat, _, _))
+#else
+#define PASSTHROUGH_ENTRY_faccessat
+#endif
+
+#ifdef SYS_openat
+#define PASSTHROUGH_ENTRY_openat ((AT2, openat, openat, _, _))
+#else
+#define PASSTHROUGH_ENTRY_openat
+#endif
+
+#ifdef SYS_newfstatat
+#define PASSTHROUGH_ENTRY_newfstatat ((AT2, newfstatat, newfstatat, _, _))
+#else
+#define PASSTHROUGH_ENTRY_newfstatat
+#endif
+
+#ifdef SYS_readlinkat
+#define PASSTHROUGH_ENTRY_readlinkat ((AT2, readlinkat, readlinkat, _, _))
+#else
+#define PASSTHROUGH_ENTRY_readlinkat
+#endif
+
+#ifdef SYS_statx
+#define PASSTHROUGH_ENTRY_statx ((AT3, statx, statx, _, _))
+#else
+#define PASSTHROUGH_ENTRY_statx
+#endif
+
+#define PASSTHROUGH_SEQ \
+    PASSTHROUGH_ENTRY_unlinkat \
+    PASSTHROUGH_ENTRY_mkdirat \
+    PASSTHROUGH_ENTRY_faccessat \
+    PASSTHROUGH_ENTRY_openat \
+    PASSTHROUGH_ENTRY_newfstatat \
+    PASSTHROUGH_ENTRY_readlinkat \
+    PASSTHROUGH_ENTRY_statx
 
 #endif /* FAKECHROOT_SYSCALL_H */
