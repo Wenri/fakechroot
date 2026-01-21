@@ -234,7 +234,7 @@ wrapper(sigaction, int, (int signum, const struct sigaction *act, struct sigacti
 
     /* Use shared helper for SIGSYS protection logic */
     debug("sigaction: intercepting SIGSYS handler change");
-    return handle_sigsys_sigaction(act, oldact, &saved_sigsys_handler);
+    return handle_sigsys_sigaction(act, oldact);
 }
 
 /*

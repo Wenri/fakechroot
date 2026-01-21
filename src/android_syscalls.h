@@ -66,18 +66,16 @@ extern struct sigaction saved_sigsys_handler;
  * Returns 0 on success (always succeeds for SIGSYS).
  *
  * Parameters:
- *   act          - New handler to install (or NULL to query)
- *   oldact       - Where to store previous handler (or NULL)
- *   saved_handler - Pointer to saved handler storage (for chaining)
+ *   act    - New handler to install (or NULL to query)
+ *   oldact - Where to store previous handler (or NULL)
  */
 static inline int handle_sigsys_sigaction(
     const struct sigaction *act,
-    struct sigaction *oldact,
-    struct sigaction *saved_handler)
+    struct sigaction *oldact)
 {
     /* Return the previously saved handler if requested */
     if (oldact != NULL) {
-        memcpy(oldact, saved_handler, sizeof(struct sigaction));
+        memcpy(oldact, &saved_sigsys_handler, sizeof(struct sigaction));
     }
 
     /* If just querying (act == NULL), we're done */
@@ -86,7 +84,7 @@ static inline int handle_sigsys_sigaction(
     }
 
     /* Save their handler for chaining but don't actually install it */
-    memcpy(saved_handler, act, sizeof(struct sigaction));
+    memcpy(&saved_sigsys_handler, act, sizeof(struct sigaction));
 
     /* Return success - caller thinks their handler is installed */
     return 0;

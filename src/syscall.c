@@ -131,7 +131,7 @@ wrapper(syscall, long, (long number, ...))
         }
 
         debug("syscall(SYS_rt_sigaction, SIGSYS, %p, %p, %zu)", act, oldact, sigsetsize);
-        return handle_sigsys_sigaction(act, oldact, &saved_sigsys_handler);
+        return handle_sigsys_sigaction(act, oldact);
     }
 #endif
 
