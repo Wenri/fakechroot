@@ -94,17 +94,16 @@ typedef ucontext_t * sigsys_ctx_t;
 
 /*
  * ============================================================================
- * Type-generic accessors using _Generic
+ * Context-specific argument accessors
  *
- * CTX_ARG extracts argument n from either context type:
- * - syscall_args_t: Direct array access
- * - sigsys_ctx_t: Register access via SIGSYS_REG
+ * CTX_ARG must be defined by each source file before using SYS_GEN_* macros:
+ * - syscall.c: #define CTX_ARG(ctx, n) (ctx).a[n]
+ * - sigaction.c: #define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
+ *
+ * Note: _Generic cannot be used here because both branches must be
+ * syntactically valid, but (ctx).a[n] is invalid when ctx is a pointer.
  * ============================================================================
  */
-
-#define CTX_ARG(ctx, n) _Generic((ctx), \
-    syscall_args_t: (ctx).a[n], \
-    sigsys_ctx_t: SIGSYS_REG(ctx, n))
 
 /* Both contexts use nextcall(syscall) for proper interception */
 #define CTX_CALL(ctx, ...) nextcall(syscall)(__VA_ARGS__)

@@ -124,15 +124,18 @@ struct sigaction saved_sigsys_handler;
 static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 {
     long ret;
-    sigsys_ctx_t sctx = ctx;  /* For _Generic type matching */
+    sigsys_ctx_t sctx = ctx;
 
     switch (syscall_nr) {
 
     /* ================================================================
      * Android seccomp bypass - redirect blocked syscalls to alternatives
      * Uses REDIRECT_SEQ from syscall_macros.h (single source of truth)
-     * with Boost.PP for iteration and _Generic for type dispatch.
+     * with Boost.PP for iteration.
      * ================================================================ */
+
+    /* Context-specific argument accessor for sigsys_ctx_t (ucontext pointer) */
+#define CTX_ARG(ctx, n) SIGSYS_REG(ctx, n)
 
     /* Done: set return value and goto cleanup */
 #define SIGSYS_DONE(val) do { ret = val; goto set_return; } while(0)
@@ -150,6 +153,7 @@ static int handle_sigsys_redirect(ucontext_t *ctx, int syscall_nr)
 
 #undef SIGSYS_DISPATCH
 #undef SIGSYS_DONE
+#undef CTX_ARG
 
     default:
         return 0;  /* Not handled */

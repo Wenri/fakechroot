@@ -104,12 +104,15 @@ wrapper(syscall, long, (long number, ...))
     /* ================================================================
      * Android seccomp bypass - redirect blocked syscalls to alternatives
      * Uses REDIRECT_SEQ from syscall_macros.h (single source of truth)
-     * with Boost.PP for iteration and _Generic for type dispatch.
+     * with Boost.PP for iteration.
      *
      * Note: These redirects do NOT perform path expansion. This is
      * intentional - programs using raw syscall() typically use absolute
      * paths, and the unified approach simplifies the implementation.
      * ================================================================ */
+
+    /* Context-specific argument accessor for syscall_args_t */
+#define CTX_ARG(ctx, n) (ctx).a[n]
 
     /* Setup: extract all va_args into syscall_args_t */
 #define SYSCALL_SETUP(ap) ((syscall_args_t){ \
@@ -134,6 +137,7 @@ wrapper(syscall, long, (long number, ...))
 #undef SYSCALL_DISPATCH
 #undef SYSCALL_DONE
 #undef SYSCALL_SETUP
+#undef CTX_ARG
 
 #ifdef SYS_rt_sigaction
     /*
