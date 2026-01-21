@@ -284,40 +284,14 @@ LOCAL size_t exec_preserve_env(char * const envp[], char **newenvp, char *envbuf
  * Prepare execution context: expand filename and detect file type.
  * Reads file header to determine if it's ELF, script, or other.
  * Returns context with type set; errno set on error.
- *
- * Buffer Reuse Strategy:
- * ----------------------
- * The expand_chroot_path() function requires one temporary buffer.
- * Instead of allocating FAKECHROOT_PATH_MAX (~4KB) on the stack,
- * we reuse ctx.hashbang which is unused at this point:
- *
- *   Timeline of ctx buffer usage in exec_prepare():
- *   ┌─────────────────────┬─────────────────────┐
- *   │ Phase               │ ctx.hashbang        │
- *   ├─────────────────────┼─────────────────────┤
- *   │ expand_chroot_path  │ fakechroot_buf      │
- *   │ After expand        │ (garbage)           │
- *   │ read() file header  │ file header data    │
- *   │ Return for scripts  │ shebang line        │
- *   │ Return for ELF      │ PT_INTERP path      │
- *   └─────────────────────┴─────────────────────┘
- *
- * This saves ~4KB of stack space per exec call.
  */
 LOCAL exec_ctx_t exec_prepare(const char *filename)
 {
     exec_ctx_t ctx = {0};
     int file, i;
 
-    /*
-     * Buffer reuse: ctx.hashbang is unused until later.
-     * We use it as temporary buffer for expand_chroot_path.
-     * After expansion, ctx.hashbang will be overwritten by file read().
-     */
-    char *fakechroot_buf = ctx.hashbang;
-
-    /* Expand filename path (uses fakechroot_buf as temp buffer) */
-    filename = expand_chroot_path(filename, fakechroot_buf);
+    /* Expand filename path, reusing ctx.hashbang as temp buffer */
+    filename = expand_chroot_path(filename, ctx.hashbang);
     strncpy(ctx.expandedFilename, filename, FAKECHROOT_PATH_MAX - 1);
     ctx.expandedFilename[FAKECHROOT_PATH_MAX - 1] = '\0';
 
