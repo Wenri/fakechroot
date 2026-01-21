@@ -423,8 +423,7 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
     if (nl) *nl = '\0';
 
     /* Get interpreter (first whitespace-delimited token after "#!") */
-    char *saveptr;
-    char *originalInterp = strtok_r(ctx->hashbang + 2, " \t", &saveptr);
+    char *originalInterp = strtok_r(ctx->hashbang + 2, " \t", shebangArg);
     if (!originalInterp) {
         *shebangArg = NULL;
         return NULL;
@@ -440,10 +439,10 @@ static char *parse_shebang(exec_ctx_t *ctx, char **shebangArg)
     }
 
     /* Skip leading whitespace to get optional shebang argument */
-    saveptr += strspn(saveptr, " \t");
-    *shebangArg = *saveptr ? saveptr : NULL;
-
-    if (*shebangArg) {
+    *shebangArg += strspn(*shebangArg, " \t");
+    if (!**shebangArg) {
+        *shebangArg = NULL;
+    } else {
         debug("exec: shebangArg=\"%s\"", *shebangArg);
     }
 
