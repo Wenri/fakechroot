@@ -33,12 +33,10 @@
  * - Context-specific CTX_ARG and CTX_EXPAND_PATH* macros defined per-file
  * - Context types: long[6] array in syscall.c, ucontext_t* in sigaction.c
  *
- * Patterns supported (8 macros in 5 groups):
+ * Patterns supported (8 macros in 3 groups):
  * - Group 1: FORWARD (no path handling)
- * - Group 2: PATH0, PATH0_DIRECT (path at arg 0)
- * - Group 3: AT1, AT2 (AT-style with dirfd)
- * - Group 4: PATH1 (path at arg 1, no dirfd)
- * - Group 5: LINK2, AT1_AT3 (two paths)
+ * - Group 2: PATH0_DIRECT, PATH0, PATH1, PATH2 (PATH family, no dirfd)
+ * - Group 3: AT1, AT2, AT1_AT3 (AT family, with dirfd)
  */
 
 #ifndef FAKECHROOT_SYSCALL_H
@@ -112,21 +110,19 @@ wrapper_proto(syscall, long, (long, ...));
  * This allows uniform dispatch from REDIRECT_SEQ entries.
  *
  * ============================================================================
- * Macro Comparison Table (8 macros in 5 groups)
+ * Macro Comparison Table (8 macros in 3 groups)
  * ============================================================================
  * | Macro       | Input Args                           | Path Expansion     | Output Format                         | p1      | p2        |
  * |-------------|--------------------------------------|--------------------|---------------------------------------|---------|-----------|
  * | FORWARD     | args...                              | none               | to(args..., 0...)                     | nargs   | nzeros    |
  * |-------------|--------------------------------------|--------------------|---------------------------------------|---------|-----------|
- * | PATH0       | path, ...                            | arg 0              | to(AT_FDCWD, path, ..., extra)        | nargs   | extra     |
  * | PATH0_DIRECT| path, ...                            | arg 0              | to(path, ...)                         | nargs   | _         |
+ * | PATH0       | path, ...                            | arg 0              | to(AT_FDCWD, path, ..., extra)        | nargs   | extra     |
+ * | PATH1       | arg0, path, ...                      | arg 1              | to(arg0, [AT_FDCWD,] path, ...)       | nargs   | fdcwd     |
+ * | PATH2       | path0, path1                         | args 0,1           | to(AT_FDCWD, path0, AT_FDCWD, path1, extra)| _  | extra     |
  * |-------------|--------------------------------------|--------------------|---------------------------------------|---------|-----------|
  * | AT1         | dirfd, path, ...                     | arg 1 (AT)         | to(dirfd, path, ..., 0...)            | nargs   | nzeros    |
  * | AT2         | arg0, dirfd, path                    | arg 2 (AT)         | to(arg0, dirfd, path)                 | _       | _         |
- * |-------------|--------------------------------------|--------------------|---------------------------------------|---------|-----------|
- * | PATH1       | arg0, path, ...                      | arg 1              | to(arg0, [AT_FDCWD,] path, ...)       | nargs   | fdcwd     |
- * |-------------|--------------------------------------|--------------------|---------------------------------------|---------|-----------|
- * | LINK2       | path0, path1                         | args 0,1           | to(AT_FDCWD, path0, AT_FDCWD, path1, 0)| _      | _         |
  * | AT1_AT3     | dirfd0, path1, dirfd2, path3[, ...]  | args 1,3 (AT)      | to(dirfd0, path1, dirfd2, path3, ...) | nargs   | _         |
  * ============================================================================
  */
@@ -163,20 +159,8 @@ wrapper_proto(syscall, long, (long, ...));
     }
 
 /* ============================================================================
- * Group 2: Single path at position 0
+ * Group 2: PATH family (no dirfd, uses CTX_EXPAND_PATH)
  * ============================================================================ */
-
-/* PATH0: syscall(path, ...) -> target(AT_FDCWD, path, ..., extra)
- * p1: nargs, p2: extra value to append */
-#define SYS_GEN_PATH0(from, to, p1, p2) \
-    case BOOST_PP_CAT(SYS_, from): { \
-        CTX_SETUP(_ctx); \
-        const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
-        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path \
-            BOOST_PP_REPEAT(p1, SYS_GEN_EMIT_ARG_FROMX, 1), p2); \
-        debug("redirect: " #from " -> " #to " = %ld", result); \
-        CTX_DONE(result); \
-    }
 
 /* PATH0_DIRECT: syscall(path, ...) -> same(expanded_path, ...)
  * Direct passthrough without AT_FDCWD prepend
@@ -191,8 +175,45 @@ wrapper_proto(syscall, long, (long, ...));
         CTX_DONE(result); \
     }
 
+/* PATH0: syscall(path, ...) -> target(AT_FDCWD, path, ..., extra)
+ * p1: nargs, p2: extra value to append */
+#define SYS_GEN_PATH0(from, to, p1, p2) \
+    case BOOST_PP_CAT(SYS_, from): { \
+        CTX_SETUP(_ctx); \
+        const char *_path = CTX_EXPAND_PATH(_ctx, 0); \
+        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path \
+            BOOST_PP_REPEAT(p1, SYS_GEN_EMIT_ARG_FROMX, 1), p2); \
+        debug("redirect: " #from " -> " #to " = %ld", result); \
+        CTX_DONE(result); \
+    }
+
+/* PATH1: syscall(arg0, path, ...) -> to(arg0, [AT_FDCWD,] path, ...)
+ * p1: nargs, p2: fdcwd (1=insert AT_FDCWD after arg0) */
+#define SYS_GEN_PATH1(from, to, p1, p2) \
+    case BOOST_PP_CAT(SYS_, from): { \
+        CTX_SETUP(_ctx); \
+        const char *_path = CTX_EXPAND_PATH(_ctx, 1); \
+        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), \
+            CTX_ARG(_ctx, 0) BOOST_PP_COMMA_IF(p2) BOOST_PP_EXPR_IF(p2, AT_FDCWD), _path \
+            BOOST_PP_REPEAT(p1, SYS_GEN_EMIT_ARG_FROMX, 2)); \
+        debug("syscall: " #from " = %ld", result); \
+        CTX_DONE(result); \
+    }
+
+/* PATH2: syscall(path0, path1) -> to(AT_FDCWD, path0, AT_FDCWD, path1, extra)
+ * p1: unused, p2: extra value to append */
+#define SYS_GEN_PATH2(from, to, p1, p2) \
+    case BOOST_PP_CAT(SYS_, from): { \
+        CTX_SETUP(_ctx); \
+        const char *_path0 = CTX_EXPAND_PATH(_ctx, 0); \
+        const char *_path1 = CTX_EXPAND_PATH(_ctx, 1); \
+        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), AT_FDCWD, _path0, AT_FDCWD, _path1, p2); \
+        debug("redirect: " #from " -> " #to " = %ld", result); \
+        CTX_DONE(result); \
+    }
+
 /* ============================================================================
- * Group 3: Single path with dirfd (AT-style)
+ * Group 3: AT family (with dirfd, uses CTX_EXPAND_PATH_AT)
  * ============================================================================ */
 
 /* AT1: syscall(dirfd, path, ...) -> to(dirfd, expanded_path, ..., 0...)
@@ -219,39 +240,6 @@ wrapper_proto(syscall, long, (long, ...));
         long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), \
             CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), _path); \
         debug("syscall: " #from " = %ld", result); \
-        CTX_DONE(result); \
-    }
-
-/* ============================================================================
- * Group 4: Single path at position 1, no dirfd
- * ============================================================================ */
-
-/* PATH1: syscall(arg0, path, ...) -> to(arg0, [AT_FDCWD,] path, ...)
- * p1: nargs, p2: fdcwd (1=insert AT_FDCWD after arg0) */
-#define SYS_GEN_PATH1(from, to, p1, p2) \
-    case BOOST_PP_CAT(SYS_, from): { \
-        CTX_SETUP(_ctx); \
-        const char *_path = CTX_EXPAND_PATH(_ctx, 1); \
-        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), \
-            CTX_ARG(_ctx, 0) BOOST_PP_COMMA_IF(p2) BOOST_PP_EXPR_IF(p2, AT_FDCWD), _path \
-            BOOST_PP_REPEAT(p1, SYS_GEN_EMIT_ARG_FROMX, 2)); \
-        debug("syscall: " #from " = %ld", result); \
-        CTX_DONE(result); \
-    }
-
-/* ============================================================================
- * Group 5: Two paths
- * ============================================================================ */
-
-/* LINK2: syscall(path0, path1) -> to(AT_FDCWD, path0, AT_FDCWD, path1, 0)
- * p1, p2: unused */
-#define SYS_GEN_LINK2(from, to, p1, p2) \
-    case BOOST_PP_CAT(SYS_, from): { \
-        CTX_SETUP(_ctx); \
-        const char *_oldpath = CTX_EXPAND_PATH(_ctx, 0); \
-        const char *_newpath = CTX_EXPAND_PATH(_ctx, 1); \
-        long result = nextcall(syscall)(BOOST_PP_CAT(SYS_, to), AT_FDCWD, _oldpath, AT_FDCWD, _newpath, 0); \
-        debug("redirect: " #from " -> " #to " = %ld", result); \
         CTX_DONE(result); \
     }
 
@@ -353,7 +341,7 @@ wrapper_proto(syscall, long, (long, ...));
 #endif
 
 /* Filesystem syscalls
- * Format: (PATH1/LINK2, from, to, p1, p2) */
+ * Format: (PATH1/PATH2, from, to, p1, p2) */
 #ifdef SYS_symlink
 #define REDIRECT_ENTRY_symlink ((PATH1, symlink, symlinkat, 0, 1))
 #else
@@ -361,7 +349,7 @@ wrapper_proto(syscall, long, (long, ...));
 #endif
 
 #ifdef SYS_link
-#define REDIRECT_ENTRY_link ((LINK2, link, linkat, _, _))
+#define REDIRECT_ENTRY_link ((PATH2, link, linkat, _, 0))
 #else
 #define REDIRECT_ENTRY_link
 #endif
