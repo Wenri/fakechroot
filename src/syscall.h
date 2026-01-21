@@ -473,74 +473,74 @@ wrapper_proto(syscall, long, (long, ...));
 
 /* Group 3: Non-AT path syscalls */
 #ifdef SYS_chdir
-#define PASSTHROUGH_ENTRY_chdir ((PATH0, chdir, chdir, 0, _))
+#define PASSTHROUGH_ENTRY_chdir ((PATH0, chdir, chdir, 0, ))
 #else
 #define PASSTHROUGH_ENTRY_chdir
 #endif
 
 #ifdef SYS_chroot
-#define PASSTHROUGH_ENTRY_chroot ((PATH0, chroot, chroot, 0, _))
+#define PASSTHROUGH_ENTRY_chroot ((PATH0, chroot, chroot, 0, ))
 #else
 #define PASSTHROUGH_ENTRY_chroot
 #endif
 
 #ifdef SYS_truncate
-#define PASSTHROUGH_ENTRY_truncate ((PATH0, truncate, truncate, 1, _))
+#define PASSTHROUGH_ENTRY_truncate ((PATH0, truncate, truncate, 1, ))
 #else
 #define PASSTHROUGH_ENTRY_truncate
 #endif
 
 #ifdef SYS_statfs
-#define PASSTHROUGH_ENTRY_statfs ((PATH0, statfs, statfs, 1, _))
+#define PASSTHROUGH_ENTRY_statfs ((PATH0, statfs, statfs, 1, ))
 #else
 #define PASSTHROUGH_ENTRY_statfs
 #endif
 
 /* Group 4: Extended attribute syscalls */
 #ifdef SYS_getxattr
-#define PASSTHROUGH_ENTRY_getxattr ((PATH0, getxattr, getxattr, 3, _))
+#define PASSTHROUGH_ENTRY_getxattr ((PATH0, getxattr, getxattr, 3, ))
 #else
 #define PASSTHROUGH_ENTRY_getxattr
 #endif
 
 #ifdef SYS_lgetxattr
-#define PASSTHROUGH_ENTRY_lgetxattr ((PATH0, lgetxattr, lgetxattr, 3, _))
+#define PASSTHROUGH_ENTRY_lgetxattr ((PATH0, lgetxattr, lgetxattr, 3, ))
 #else
 #define PASSTHROUGH_ENTRY_lgetxattr
 #endif
 
 #ifdef SYS_setxattr
-#define PASSTHROUGH_ENTRY_setxattr ((PATH0, setxattr, setxattr, 4, _))
+#define PASSTHROUGH_ENTRY_setxattr ((PATH0, setxattr, setxattr, 4, ))
 #else
 #define PASSTHROUGH_ENTRY_setxattr
 #endif
 
 #ifdef SYS_lsetxattr
-#define PASSTHROUGH_ENTRY_lsetxattr ((PATH0, lsetxattr, lsetxattr, 4, _))
+#define PASSTHROUGH_ENTRY_lsetxattr ((PATH0, lsetxattr, lsetxattr, 4, ))
 #else
 #define PASSTHROUGH_ENTRY_lsetxattr
 #endif
 
 #ifdef SYS_listxattr
-#define PASSTHROUGH_ENTRY_listxattr ((PATH0, listxattr, listxattr, 2, _))
+#define PASSTHROUGH_ENTRY_listxattr ((PATH0, listxattr, listxattr, 2, ))
 #else
 #define PASSTHROUGH_ENTRY_listxattr
 #endif
 
 #ifdef SYS_llistxattr
-#define PASSTHROUGH_ENTRY_llistxattr ((PATH0, llistxattr, llistxattr, 2, _))
+#define PASSTHROUGH_ENTRY_llistxattr ((PATH0, llistxattr, llistxattr, 2, ))
 #else
 #define PASSTHROUGH_ENTRY_llistxattr
 #endif
 
 #ifdef SYS_removexattr
-#define PASSTHROUGH_ENTRY_removexattr ((PATH0, removexattr, removexattr, 1, _))
+#define PASSTHROUGH_ENTRY_removexattr ((PATH0, removexattr, removexattr, 1, ))
 #else
 #define PASSTHROUGH_ENTRY_removexattr
 #endif
 
 #ifdef SYS_lremovexattr
-#define PASSTHROUGH_ENTRY_lremovexattr ((PATH0, lremovexattr, lremovexattr, 1, _))
+#define PASSTHROUGH_ENTRY_lremovexattr ((PATH0, lremovexattr, lremovexattr, 1, ))
 #else
 #define PASSTHROUGH_ENTRY_lremovexattr
 #endif
