@@ -47,10 +47,7 @@
 #include <boost/preprocessor/tuple/elem.hpp>
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/repetition/repeat.hpp>
-#include <boost/preprocessor/repetition/enum.hpp>
 #include <boost/preprocessor/arithmetic/add.hpp>
-#include <boost/preprocessor/arithmetic/inc.hpp>
-#include <boost/preprocessor/arithmetic/dec.hpp>
 #include <boost/preprocessor/control/expr_if.hpp>
 
 /*
@@ -132,15 +129,15 @@ wrapper_proto(syscall, long, (long, ...));
 /* Helper: emit ", x" for BOOST_PP_REPEAT (trailing constant value) */
 #define SYS_GEN_EMIT_X(z, n, x) , x
 
-/* Helper: extract tuple element i+1 for BOOST_PP_ENUM */
-#define SYS_GEN_EXTRACT_ARG(z, i, elem) BOOST_PP_TUPLE_ELEM(BOOST_PP_INC(i), elem)
-
 /* Dispatch macro for BOOST_PP_SEQ_FOR_EACH
- * - data: tuple size (e.g., 5 for 5-tuple)
- * - Extracts element 0 as pattern, elements 1..n-1 as arguments */
+ * - data: tuple size (5 for 5-tuple: PATTERN, from, to, p1, p2)
+ * - Extracts element 0 as pattern, elements 1-4 as arguments */
 #define SYS_GEN_DISPATCH(r, n, elem) \
     BOOST_PP_CAT(SYS_GEN_, BOOST_PP_TUPLE_ELEM(0, elem))( \
-        BOOST_PP_ENUM(BOOST_PP_DEC(n), SYS_GEN_EXTRACT_ARG, elem))
+        BOOST_PP_TUPLE_ELEM(1, elem), \
+        BOOST_PP_TUPLE_ELEM(2, elem), \
+        BOOST_PP_TUPLE_ELEM(3, elem), \
+        BOOST_PP_TUPLE_ELEM(4, elem))
 
 /* Forward: syscall(args...) -> target(args..., 0...)
  * - p1: number of args to pass through
