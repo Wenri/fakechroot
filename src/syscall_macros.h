@@ -136,82 +136,82 @@ typedef ucontext_t * sigsys_ctx_t;
 
 /* AT syscall: syscall(dirfd, path, mode) -> target(dirfd, path, mode, e1) */
 #define SYS_GEN_AT(from, to, e1, e2, ctx_expr, DONE) \
-    case SYS_##from: { \
+    case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
 /* Path with 0 args: syscall(path) -> target(AT_FDCWD, path, e1) */
 #define SYS_GEN_PATH0(from, to, e1, e2, ctx_expr, DONE) \
-    case SYS_##from: { \
+    case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), e1); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, CTX_ARG(_ctx, 0), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
 /* Path with 1 arg: syscall(path, a2) -> target(AT_FDCWD, path, a2, e1) */
 #define SYS_GEN_PATH1(from, to, e1, e2, ctx_expr, DONE) \
-    case SYS_##from: { \
+    case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), e1); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
 /* Path with 2 args: syscall(path, a2, a3) -> target(AT_FDCWD, path, a2, a3, e1) */
 #define SYS_GEN_PATH2(from, to, e1, e2, ctx_expr, DONE) \
-    case SYS_##from: { \
+    case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
 /* 0 args: syscall() -> target(e1) */
 #define SYS_GEN_R0(from, to, e1, e2, ctx_expr, DONE) \
-    case SYS_##from: { \
+    case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
         (void)_ctx; /* unused but needed for consistency */ \
-        long result = CTX_CALL(_ctx, SYS_##to, e1); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
 /* 3 args: syscall(a1, a2, a3) -> target(a1, a2, a3, e1) */
 #define SYS_GEN_R3(from, to, e1, e2, ctx_expr, DONE) \
-    case SYS_##from: { \
+    case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), e1); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
 /* 4 args + 2 extras: syscall(a1, a2, a3, a4) -> target(a1, a2, a3, a4, e1, e2) */
 #define SYS_GEN_R4_2(from, to, e1, e2, ctx_expr, DONE) \
-    case SYS_##from: { \
+    case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), CTX_ARG(_ctx, 3), e1, e2); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), CTX_ARG(_ctx, 1), CTX_ARG(_ctx, 2), CTX_ARG(_ctx, 3), e1, e2); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
 /* symlink(target, linkpath) -> symlinkat(target, AT_FDCWD, linkpath) */
 #define SYS_GEN_SYMLINK(from, to, e1, e2, ctx_expr, DONE) \
-    case SYS_##from: { \
+    case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, CTX_ARG(_ctx, 0), AT_FDCWD, CTX_ARG(_ctx, 1)); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), CTX_ARG(_ctx, 0), AT_FDCWD, CTX_ARG(_ctx, 1)); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
 
 /* link(oldpath, newpath) -> linkat(AT_FDCWD, oldpath, AT_FDCWD, newpath, 0) */
 #define SYS_GEN_LINK(from, to, e1, e2, ctx_expr, DONE) \
-    case SYS_##from: { \
+    case BOOST_PP_CAT(SYS_, from): { \
         typeof(ctx_expr) _ctx = ctx_expr; \
-        long result = CTX_CALL(_ctx, SYS_##to, AT_FDCWD, CTX_ARG(_ctx, 0), AT_FDCWD, CTX_ARG(_ctx, 1), 0); \
+        long result = CTX_CALL(_ctx, BOOST_PP_CAT(SYS_, to), AT_FDCWD, CTX_ARG(_ctx, 0), AT_FDCWD, CTX_ARG(_ctx, 1), 0); \
         debug("redirect: " #from " -> " #to " = %ld", result); \
         DONE(result); \
     }
