@@ -94,6 +94,19 @@ static inline void narrow_chroot_path(char *path)
         return;
     }
 
+    /* FAKECHROOT_DISABLE_NARROW: suppress prefix stripping in libc-level
+     * readback paths (getcwd, readlink, etc.).  Callers that mix libc
+     * calls with direct syscalls (e.g. Bun's Zig-based module resolver)
+     * see the stripped bare form come back from libc, then feed it into
+     * a raw openat that bypasses this LD_PRELOAD — kernel returns ENOENT
+     * because the bare path doesn't exist on the real filesystem.
+     * Setting this env var keeps paths in their real-fs form throughout,
+     * so raw syscalls succeed.  The expand direction (add prefix) still
+     * runs unchanged.  */
+    if (getenv("FAKECHROOT_DISABLE_NARROW")) {
+        return;
+    }
+
     char *fakechroot_ptr = strstr(path, ANDROID_BASE);
     if (fakechroot_ptr != path) {
         return;

@@ -45,21 +45,27 @@ wrapper(__readlink_chk, ssize_t, (const char * path, char * buf, size_t bufsiz, 
     }
     tmp[linksize] = '\0';
 
-    /* Strip ANDROID_BASE prefix from symlink target if present */
-    tmpptr = strstr(tmp, ANDROID_BASE);
-    if (tmpptr != tmp) {
+    /* Strip ANDROID_BASE prefix from symlink target if present.
+     * FAKECHROOT_DISABLE_NARROW suppresses this strip (see libfakechroot.h). */
+    if (getenv("FAKECHROOT_DISABLE_NARROW")) {
         tmpptr = tmp;
-    }
-    else if (tmp[ANDROID_BASE_LEN] == '\0') {
-        tmpptr = "/";
-        linksize = 1;
-    }
-    else if (tmp[ANDROID_BASE_LEN] == '/') {
-        tmpptr = tmp + ANDROID_BASE_LEN;
-        linksize -= ANDROID_BASE_LEN;
     }
     else {
-        tmpptr = tmp;
+        tmpptr = strstr(tmp, ANDROID_BASE);
+        if (tmpptr != tmp) {
+            tmpptr = tmp;
+        }
+        else if (tmp[ANDROID_BASE_LEN] == '\0') {
+            tmpptr = "/";
+            linksize = 1;
+        }
+        else if (tmp[ANDROID_BASE_LEN] == '/') {
+            tmpptr = tmp + ANDROID_BASE_LEN;
+            linksize -= ANDROID_BASE_LEN;
+        }
+        else {
+            tmpptr = tmp;
+        }
     }
     if ((size_t)linksize > bufsiz) {
         linksize = bufsiz;
